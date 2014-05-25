@@ -55,6 +55,7 @@ def compareScreenshot(fileName, win, crit=5.0):
             logging.warning('PsychoPyTests: Saving local copy into %s' % filenameLocal)
         assert rms<crit, \
             "RMS=%.3g at threshold=%.3g. Local copy in %s" % (rms, crit, filenameLocal)
+    win.flip()
 
 
 def compareTextFiles(pathToActual, pathToCorrect, delim=None):
