@@ -57,8 +57,7 @@ class _baseVisualTest:
     def teardown_class(self):#run once for each test class (window)
         self.win.close()#shutil.rmtree(self.temp_dir)
     def setup(self):#this is run for each test individually
-        #make sure we start with a clean window
-        self.win.flip()
+        pass
     def test_auto_draw(self):
         win = self.win
         stims=[]
@@ -82,7 +81,6 @@ class _baseVisualTest:
                                  size=size, flipHoriz=True, flipVert=True)
         image.draw()
         utils.compareScreenshot('imageAndGauss_%s.png' %(self.contextName), win)
-        win.flip()
     def test_gratingImageAndGauss(self):
         win = self.win
         size = numpy.array([2.0,2.0])*self.scaleFactor
@@ -95,7 +93,6 @@ class _baseVisualTest:
         image = visual.GratingStim(win, tex=fileName, size=size, sf=sf, mask='gauss')
         image.draw()
         utils.compareScreenshot('imageAndGauss_%s.png' %(self.contextName), win)
-        win.flip()
     def test_greyscaleImage(self):
         win = self.win
         fileName = os.path.join(utils.TESTS_DATA_PATH, 'greyscale.jpg')
@@ -103,23 +100,19 @@ class _baseVisualTest:
         imageStim.draw()
         utils.compareScreenshot('greyscale_%s.png' %(self.contextName), win)
         str(imageStim) #check that str(xxx) is working
-        win.flip()
         imageStim.color = [0.1,0.1,0.1]
         imageStim.draw()
         utils.compareScreenshot('greyscaleLowContr_%s.png' %(self.contextName), win)
-        win.flip()
         imageStim.color = 1
         imageStim.contrast = 0.1#should have identical effect to color=0.1
         imageStim.draw()
         utils.compareScreenshot('greyscaleLowContr_%s.png' %(self.contextName), win)
-        win.flip()
         imageStim.contrast = 1.0
         fileName = os.path.join(utils.TESTS_DATA_PATH, 'greyscale2.png')
         imageStim.image = fileName
         imageStim.size *= 3
         imageStim.draw()
         utils.compareScreenshot('greyscale2_%s.png' %(self.contextName), win)
-        win.flip()
     def test_numpyTexture(self):
         win = self.win
         grating = filters.makeGrating(res=64, ori=20.0,
@@ -132,18 +125,15 @@ class _baseVisualTest:
 
         utils.compareScreenshot('numpyImage_%s.png' %(self.contextName), win)
         str(imageStim) #check that str(xxx) is working
-        win.flip()
         #set lowcontrast using color
         imageStim.color = [0.1,0.1,0.1]
         imageStim.draw()
         utils.compareScreenshot('numpyLowContr_%s.png' %(self.contextName), win)
-        win.flip()
         #now try low contrast using contr
         imageStim.color = 1
         imageStim.contrast = 0.1#should have identical effect to color=0.1
         imageStim.draw()
         utils.compareScreenshot('numpyLowContr_%s.png' %(self.contextName), win)
-        win.flip()
 
     def test_gabor(self):
         win = self.win
@@ -154,13 +144,11 @@ class _baseVisualTest:
             interpolate=True)
         gabor.draw()
         utils.compareScreenshot('gabor1_%s.png' %(self.contextName), win)
-        win.flip()#AFTER compare screenshot
 
         #did buffer image also work?
         #bufferImgStim = visual.BufferImageStim(self.win, stim=[gabor])
         #bufferImgStim.draw()
         #utils.compareScreenshot('gabor1_%s.png' %(self.contextName), win)
-        #win.flip()
 
         #using .set()
         gabor.ori = 45
@@ -172,7 +160,6 @@ class _baseVisualTest:
         gabor.opacity = 0.8
         gabor.draw()
         utils.compareScreenshot('gabor2_%s.png' %(self.contextName), win)
-        win.flip()
         str(gabor) #check that str(xxx) is working
 
     #def testMaskMatrix(self):
@@ -207,7 +194,6 @@ class _baseVisualTest:
         stim.draw()
         #compare with a LIBERAL criterion (fonts do differ)
         utils.compareScreenshot('text1_%s.png' %(self.contextName), win, crit=20)
-        win.flip()#AFTER compare screenshot
         #using set
         stim.text = 'y'
         if sys.platform=='win32':
@@ -230,7 +216,6 @@ class _baseVisualTest:
         win = self.win
         if self.win.winType=='pygame':
             pytest.skip("movies only available for pyglet backend")
-        win.flip()
         #construct full path to the movie file
         fileName = os.path.join(utils.TESTS_DATA_PATH, 'testMovie.mp4')
         #check if present
@@ -260,6 +245,7 @@ class _baseVisualTest:
         rect.width = 1
         rect.height = 1
     def test_circle(self):
+        testAttributes(self, visual.Circle)
         win = self.win
         circle = visual.Circle(win)
         circle.fillColor = 'red'
@@ -300,7 +286,6 @@ class _baseVisualTest:
         shape.draw()
         #NB shape rendering can differ a little, depending on aliasing
         utils.compareScreenshot('shape1_%s.png' %(self.contextName), win, crit=12.5)
-        win.flip()
 
         # Using .set()
         shape.contrast = 0.8
@@ -318,7 +303,6 @@ class _baseVisualTest:
         wedge.draw()
         thresh = 10
         utils.compareScreenshot('wedge1_%s.png' %(self.contextName), win, crit=thresh)
-        win.flip()#AFTER compare screenshot
 
         #using .set()
         wedge.mask = 'gauss'
@@ -351,7 +335,6 @@ class _baseVisualTest:
                               nDots=1000, fieldShape='circle', fieldPos=pos)
         dots.draw()
         utils.compareScreenshot('dots_%s.png' %(self.contextName), self.win, crit=20)
-        self.win.flip()
     def test_dots(self):
         #NB we can't use screenshots here - just check that no errors are raised
         win = self.win
@@ -384,6 +367,7 @@ class _baseVisualTest:
             "dots._signalDots failed to change after dots.setCoherence()"
         assert not numpy.alltrue(prevVerticesPix==dots.verticesPix), \
             "dots.verticesPix failed to change after dots.setPos()"
+        win.flip()  # clear
     def test_element_array(self):
         win = self.win
         if not win._haveShaders:
@@ -403,10 +387,7 @@ class _baseVisualTest:
         spiral.sfs = 3.0
         spiral.draw()
         str(spiral) #check that str(xxx) is working
-        win.flip()
-        spiral.draw()
         utils.compareScreenshot('elarray1_%s.png' %(self.contextName), win)
-        win.flip()
     def test_aperture(self):
         win = self.win
         if not win.allowStencil:
