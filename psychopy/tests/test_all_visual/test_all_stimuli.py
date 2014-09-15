@@ -7,6 +7,184 @@ import pytest
 import shutil
 from tempfile import mkdtemp
 
+import inspect
+
+"""
+Jonas' play area!
+"""
+
+
+def doAttributes(self, stimClass):
+    """
+    Draw a stimulus using all possible attributes and ways of setting them.
+    
+    STRUCTURE OF ATTRIBUTE SPECIFICATIONS:
+    Set values for all attributes and operations to be tested. 
+    The structure is this::
+    
+        ExampleAttrib = [  # list so that we can loop through them in a specified order
+            {'attribute':'size',  # name of the attributeSetter
+             'method':'setSize',  # name of corresponding setter method
+             'init':90,  # a non-default init value
+             'operations':[  # list so that we can loop through them in a specified order.
+                 ('*', (1.2, 0.8)),  # should accept x,y-pair
+                 ('/', 2)  # should accept scalar
+             ]
+             }
+        ]
+    """
+    attribs = {}
+    
+    # For MinimalStim
+    MinimalAttribs = [
+        {'attribute':'name', 'method':None, 'init':'new init params', 'operations':[('', 'newer params!')]},
+        {'attribute':'autoDraw', 'method':'setAutoDraw', 'init':False, 'operations':[]},
+    ]
+    
+    # For WindowMixin. This is not applied here because shaders + units are inherited from window.
+    WindowAttribs = [
+        #{'attribute':'units', 'method':None, 'init':'pix', 'operations':[]}
+    ]  # omit useShaders
+    
+    # For BaseVisualStim
+    BaseVisualAttribs = MinimalAttribs + WindowAttribs + [
+        {'attribute':'pos', 'method':'setPos', 'init':(0.1 * self.scaleFactor, 0.1 * self.scaleFactor), 'operations':[('-', (0.2 * self.scaleFactor, 0)), ('/', 2)]}, 
+        {'attribute':'size', 'method':'setSize', 'init':1.2 * self.scaleFactor, 'operations':[('*', (1.2, 0.8)), ('/', 1.2)]},
+        {'attribute':'ori', 'method':'setOri', 'init':45, 'operations':[('-', 160)]},
+        {'attribute':'opacity', 'method':'setOpacity', 'init':0.9, 'operations':[('*', 0.8)]},
+    ]
+    
+    # For ColorMixin
+    ColorAttribs = [
+        {'attribute':'colorSpace', 'method':None, 'init':'rgb255', 'operations':[('', 'rgb')]},
+        {'attribute':'color', 'method':None, 'init':(255, 0, 255), 'operations':[('/', (255, 0, 512)), ('*', 0.8)]},
+        {'attribute':'contrast', 'method':'setContrast', 'init':0.9, 'operations':[('-', 0.2)]}
+    ]
+    
+    # For TextureMixin
+    TextureAttribs = [
+        {'attribute':'texRes', 'method':None, 'init': 16, 'operations':[('*', 2)]},
+        {'attribute':'mask', 'method':'setMask', 'init':'raisedCos', 'operations':[('', 'gauss')]},
+        {'attribute':'maskParams', 'method':None, 'init':{'fringeWidth':0.8, 'sd':1.5}, 'operations':[]}
+    ]
+    
+    # For GratingStim
+    attribs[visual.GratingStim] = BaseVisualAttribs + ColorAttribs + TextureAttribs + [
+        {'attribute':'sf', 'method':'setSF', 'init':0.02 / self.scaleFactor, 'operations':[('+', 0.02 / self.scaleFactor)]},
+        {'attribute':'phase', 'method':'setPhase', 'init':(0, 0.25), 'operations':[('+', 0.25), ('*', (2, 0))]},
+        {'attribute':'tex', 'method':'setTex', 'init':'saw', 'operations':[('', 'sin')]}
+    ]
+    
+    # For ShapeStim
+    ShapeAttribsBase = BaseVisualAttribs + [
+        {'attribute':'lineWidth', 'method':'setLineWidth', 'init':3, 'operations':[('*', 2)]},
+        {'attribute':'lineColorSpace', 'method':None, 'init':'rgb', 'operations':[('', 'rgb')]},
+        {'attribute':'lineColor', 'method':'setLineColor', 'init':(0, 0, 1), 'operations':[('', '#FF00FF')]},
+        {'attribute':'fillColorSpace', 'method':None, 'init':'rgb255', 'operations':[('', 'rgb')]},
+        {'attribute':'fillColor', 'method':'setFillColor', 'init':(0, 255, 0), 'operations':[('/', (1, 512, 1)), ('+', 0.5)]},
+        {'attribute':'interpolate', 'method':None, 'init':False, 'operations':[('', True)]}
+    ]
+    # Vertices is specific to ShapeStim - does not make sense for Polygon, Circle and Rect
+    attribs[visual.ShapeStim] = ShapeAttribsBase + [
+        {'attribute':'vertices', 'method':'setVertices', 'init':numpy.array(([0.2,0.2], [0.5,0.5], [0.5,0.2], [0,-0.2])) * self.scaleFactor, 'operations':[('+', 0.3 * self.scaleFactor), ('-', numpy.array([[0.1, 0.1], [0.2, 0.2], [0.1, 0.2], [0, -0.1]]) * self.scaleFactor)]},
+        {'attribute':'closeShape', 'method':None, 'init':False, 'operations':[]}
+    ]
+    
+    # Adding tests for visual.Polygon, visual.Rect and visual.Circle - easy peacy
+    attribs[visual.Polygon] = ShapeAttribsBase + [
+        {'attribute':'radius', 'method':'setRadius', 'init':0.4 * self.scaleFactor, 'operations':[('+', 0.2 * self.scaleFactor)]},
+        {'attribute':'edges', 'method':'setEdges', 'init':10, 'operations':[('+', 118)]}
+    ]
+    attribs[visual.Circle] = attribs[visual.Polygon]
+    attribs[visual.Rect] = ShapeAttribsBase + [
+        {'attribute':'width', 'method':'setWidth', 'init':0.8 * self.scaleFactor, 'operations':[('*', 1.2)]},
+        {'attribute':'height', 'method':'setHeight', 'init':0.7 * self.scaleFactor, 'operations':[('*', 0.8)]}
+    ]
+    
+    # PREPERATION
+    # Get attributes for this stimulus
+    attribList = attribs[stimClass]
+    screenshotBaseName = stimClass.__name__ + '_' + self.contextName
+    inits = dict([(attribute['attribute'], attribute['init']) for attribute in attribList])
+    self.win.flip()  # clear window
+    
+    # Make a dictionary of default inits. If there's a parent class (self.parent), include those attributes as well in initsDefault.
+    stim = stimClass(self.win)  # just to get the default init parameters. Is there another way?
+    initsDefault = inspect.getcallargs(stim.__init__, self.win)
+    try:
+        stimParent = self.parent(self.win)
+        initsParent = inspect.getcallargs(stimParent.__init__, self.win)
+        initsDefault = dict(initsDefault.items() + initsParent.items())
+    except:
+        pass
+    initsDefault.pop('self', None)
+    initsDefault.pop('kwargs', None)
+
+    # Scale params
+    try:
+        for param in self.scaleParams:
+            initsDefault[param] *= self.scaleFactor
+    except:
+        pass
+    # TEST 1: raw init (defaults)
+    stim = stimClass(self.win)
+    stim.draw()
+    utils.compareScreenshot(screenshotBaseName + '_' + 'default.png', self.win)
+    
+    # intermezzo, now that we have the stimulus we chan check...
+    str(stim)
+    
+    # TEST 2: non-default params set in init
+    stim = stimClass(self.win, **inits)
+    stim.draw()
+    utils.compareScreenshot(screenshotBaseName + '_' + 'nondefault.png', self.win)
+    
+    # TEST 3: non-default params set using attributeSetters
+    # e.g. stim.ori = 45
+    stim = stimClass(self.win)
+    for attrib in attribList:
+        exec('stim.%s = %s' %(attrib['attribute'], attrib['init'].__repr__()))
+    stim.draw()
+    utils.compareScreenshot(screenshotBaseName + '_' + 'nondefault.png', self.win)
+    
+    # TEST 4: non-default params set using methods
+    # e.g. stim.setOri(45)
+    stim = stimClass(self.win)
+    for attrib in attribList:
+        if attrib['method']:
+            exec('stim.%s(%s)' %(attrib['method'], attrib['init'].__repr__()))
+        else:
+            # Not implemented, use attributeSetter to get things going
+            exec('stim.%s = %s' %(attrib['attribute'], attrib['init'].__repr__()))
+    stim.draw()
+    utils.compareScreenshot(screenshotBaseName + '_' + 'nondefault.png', self.win)
+    
+    # TEST 5: operations using attributeSetters
+    # e.g. stim.ori += 90
+    stim = stimClass(self.win, **inits)
+    for attrib in attribList:
+        for operation, value in attrib['operations']:
+            exec('stim.%s %s= %s' %(attrib['attribute'], operation, value.__repr__()))
+    stim.draw()
+    utils.compareScreenshot(screenshotBaseName + '_' + 'operations.png', self.win)
+    
+    # TEST 6: operations using methods
+    # e.g. stim.setOri(90, '+')
+    stim = stimClass(self.win, **inits)
+    for attrib in attribList:
+        for operation, value in attrib['operations']:
+            if attrib['method'] and operation:
+                exec('stim.%s(%s, operation=%s)' %(attrib['method'], value.__repr__(), operation.__repr__()))
+            elif attrib['method']:
+                exec('stim.%s(%s)' %(attrib['method'], value.__repr__()))
+            else:
+                # Not implemented, use attributeSetter to get things going
+                exec('stim.%s %s= %s' %(attrib['attribute'], operation, value.__repr__()))
+    stim.draw()
+    utils.compareScreenshot(screenshotBaseName + '_' + 'operations.png', self.win)
+
+
+
 """Each test class creates a context subclasses _baseVisualTest to run a series
 of tests on a single graphics context (e.g. pyglet with shaders)
 
@@ -226,7 +404,8 @@ class _baseVisualTest:
         mov = visual.MovieStim(win, fileName, pos=pos)
         mov.setFlipVert(True)
         mov.setFlipHoriz(True)
-        for frameN in range(10):
+        #for frameN in range(10):
+        for frameN in range(2):  # faster test
             mov.draw()
             if frameN==0:
                 utils.compareScreenshot('movFrame1_%s.png' %(self.contextName), win)
@@ -245,7 +424,10 @@ class _baseVisualTest:
         rect.width = 1
         rect.height = 1
     def test_circle(self):
-        testAttributes(self, visual.Circle)
+        self.parent = visual.ShapeStim
+        self.scaleAttribs = ['radius', 'pos']
+        doAttributes(self, visual.Circle)
+        """
         win = self.win
         circle = visual.Circle(win)
         circle.fillColor = 'red'
@@ -256,6 +438,7 @@ class _baseVisualTest:
         circle.ori = 30
         circle.draw()
         str(circle) #check that str(xxx) is working
+        """
     def test_line(self):
         win = self.win
         line = visual.Line(win)
@@ -422,11 +605,14 @@ class _baseVisualTest:
     def test_refresh_rate(self):
         if self.win.winType=='pygame':
             pytest.skip("getMsPerFrame seems to crash the testing of pygame")
+        # Faster test
+        """
         #make sure that we're successfully syncing to the frame rate
         msPFavg, msPFstd, msPFmed = visual.getMsPerFrame(self.win,nFrames=60, showVisual=True)
         utils.skip_under_travis()             # skip late so we smoke test the code
         assert (1000/150.0 < msPFavg < 1000/40.0), \
             "Your frame period is %.1fms which suggests you aren't syncing to the frame" %msPFavg
+        """
 
 #create different subclasses for each context/backend
 class TestPygletNorm(_baseVisualTest):
