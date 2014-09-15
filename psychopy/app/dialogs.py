@@ -1,4 +1,7 @@
 import wx
+
+import logging
+
 """This is for general purpose dialogs/widgets, not related to particular functionality
 
 MessageDialog:
@@ -12,21 +15,28 @@ ListWidget:
 """
 
 class MessageDialog(wx.Dialog):
-    """For some reason the wx builtin message dialog has some issues on Mac OSX
+    """For some reason the wx built-in message dialog has some issues on Mac OS X
     (buttons don't always work) so we need to use this instead.
     """
     def __init__(self,parent=None,message='',type='Warning', title=None):
-        if title==None: title=type
-        wx.Dialog.__init__(self,parent,-1,title=title)
+        # select and localize a title
+        if not title:
+            title = type
+        labels = {'Warning': _('Warning'), 'Info': _('Info')}
+        try:
+            label = labels[title]
+        except:
+            label = title
+        wx.Dialog.__init__(self,parent,-1,title=label)
         sizer=wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self,-1,message),flag=wx.ALL,border=15)
         #add buttons
         btnSizer=wx.BoxSizer(wx.HORIZONTAL)
         if type=='Warning':#we need Yes,No,Cancel
-            self.yesBtn=wx.Button(self,wx.ID_YES,'Yes')
+            self.yesBtn=wx.Button(self,wx.ID_YES,_('Yes'))
             self.yesBtn.SetDefault()
-            self.cancelBtn=wx.Button(self,wx.ID_CANCEL,'Cancel')
-            self.noBtn=wx.Button(self,wx.ID_NO,'No')
+            self.cancelBtn=wx.Button(self,wx.ID_CANCEL,_('Cancel'))
+            self.noBtn=wx.Button(self,wx.ID_NO,_('No'))
             self.Bind(wx.EVT_BUTTON, self.onButton, id=wx.ID_CANCEL)
             self.Bind(wx.EVT_BUTTON, self.onButton, id=wx.ID_YES)
             self.Bind(wx.EVT_BUTTON, self.onButton, id=wx.ID_NO)
@@ -37,10 +47,12 @@ class MessageDialog(wx.Dialog):
             btnSizer.Add((5, 20), 0)
             btnSizer.Add(self.yesBtn, wx.ALIGN_RIGHT)
         elif type=='Info':#just an OK button
-            self.okBtn=wx.Button(self,wx.ID_OK,'OK')
+            self.okBtn=wx.Button(self,wx.ID_OK,_('OK'))
             self.okBtn.SetDefault()
             self.Bind(wx.EVT_BUTTON, self.onButton, id=wx.ID_OK)
             btnSizer.Add(self.okBtn, wx.ALIGN_RIGHT)
+        else:
+            raise NotImplementedError('Message type %s unknown' % type)
         #configure sizers and fit
         sizer.Add(btnSizer,flag=wx.ALIGN_RIGHT|wx.ALL,border=5)
         self.Center()
@@ -448,7 +460,7 @@ class ListWidget(GlobSizer):
         self.fieldNames=[]
         for name in order:
             if name not in allNames:
-                logging.error('psychopy.dialogs.ListWidget was given a field name `%s` in order that was not in the dictionay' %name)
+                logging.error('psychopy.dialogs.ListWidget was given a field name `%s` in order that was not in the dictionary' %name)
                 continue
             allNames.remove(name)
             self.fieldNames.append(name)
@@ -458,7 +470,7 @@ class ListWidget(GlobSizer):
     def createGrid(self):
         row=0
         for col, field in enumerate(self.fieldNames):
-            self.Add(wx.StaticText(self.parent, -1, label=field), (row,col), flag=wx.ALL)
+            self.Add(wx.StaticText(self.parent, -1, label=_(field)), (row,col), flag=wx.ALL)
         for entry in self.value:
             row+=1
             self.addEntryCtrls(row, entry)
@@ -497,7 +509,7 @@ class ListWidget(GlobSizer):
         """Retrieve the current list of dicts from the grid
         """
         currValue = []
-        for rowN in range(self.GetRows())[1:]: #skipping the irst row (headers)
+        for rowN in range(self.GetRows())[1:]: #skipping the first row (headers)
             thisEntry = {}
             for colN, fieldName in enumerate(self.fieldNames):
                 ctrl = self.FindItemAtPosition((rowN,colN)).GetWindow()
@@ -514,10 +526,12 @@ class ListWidget(GlobSizer):
         """
         pass
 if __name__=='__main__':
-    app = wx.PySimpleApp()
+    if wx.version() < '2.9':
+        app = wx.PySimpleApp()
+    else:
+        app = wx.App(False)
     dlg = wx.Dialog(None)
     init = [{'Field':'Participant','Default':''},{'Field':'Session','Default':'001'}]
     listCtrl = ListWidget(dlg, value = init, order=['Field','Default'])
-    dlg.SetSizerAndFit(listCtrl.grid)
+    dlg.SetSizerAndFit(listCtrl)
     dlg.ShowModal()
-

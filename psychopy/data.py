@@ -606,7 +606,7 @@ class _BaseTrialHandler(object):
         return self.next()
     def getOriginPathAndFile(self, originPath=None):
         """Attempts to determine the path of the script that created this data file
-        and returns both the path to that script and it's contents.
+        and returns both the path to that script and its contents.
         Useful to store the entire experiment with the data.
 
         If originPath is provided (e.g. from Builder) then this is used otherwise
@@ -721,13 +721,13 @@ class TrialHandler(_BaseTrialHandler):
         if trialList in [None, []]:#user wants an empty trialList
             self.trialList = [None]#which corresponds to a list with a single empty entry
         elif isinstance(trialList, basestring) and os.path.isfile(trialList): #user has hopefully specified a filename
-            self.trialList = data.importConditions(trialList) #import conditions from that file
+            self.trialList = importConditions(trialList) #import conditions from that file
         else:
             self.trialList =trialList
         #convert any entry in the TrialList into a TrialType object (with obj.key or obj[key] access)
-        for n, entry in enumerate(trialList):
+        for n, entry in enumerate(self.trialList):
             if type(entry)==dict:
-                trialList[n]=TrialType(entry)
+                self.trialList[n]=TrialType(entry)
         self.nReps = int(nReps)
         self.nTotal = self.nReps*len(self.trialList)
         self.nRemaining =self.nTotal #subtract 1 each trial
@@ -1073,7 +1073,7 @@ class TrialHandler(_BaseTrialHandler):
                 try:#this will fail if we try to take mean of a string for example
                     if analType=='std':
                         thisAnal = numpy.std(thisData,axis=1,ddof=0)
-                        #normalise by N-1 instead. his should work by setting ddof=1
+                        #normalise by N-1 instead. This should work by setting ddof=1
                         #but doesn't as of 08/2010 (because of using a masked array?)
                         N=thisData.shape[1]
                         if N == 1:
@@ -1958,7 +1958,7 @@ class QuestHandler(StairHandler):
             # get response
             ...
             # inform QUEST of the response, needed to calculate next level
-            staircase.addData(thisResp)
+            staircase.addResponse(thisResp)
         ...
         # can now access 1 of 3 suggested threshold levels
         staircase.mean()
@@ -2123,7 +2123,7 @@ class QuestHandler(StairHandler):
         for intensity, result in zip(intensities,results):
             try:
                 self.next()
-                self.addData(result, intensity)
+                self.addResponse(result, intensity)
             except StopIteration:   # would get a stop iteration if stopInterval set
                 pass    # TODO: might want to check if nTrials is still good
     def calculateNextIntensity(self):
@@ -2306,7 +2306,7 @@ class MultiStairHandler(_BaseTrialHandler):
 
                 #do something with thisIntensity and thisOri
 
-                stairs.addData(correctIncorrect)#this is ESSENTIAL
+                stairs.addResponse(correctIncorrect)#this is ESSENTIAL
 
             #save data as multiple formats
             stairs.saveDataAsExcel(fileName)#easy to browse
@@ -2429,12 +2429,7 @@ class MultiStairHandler(_BaseTrialHandler):
         self.currentStaircase = self.thisPassRemaining.pop(0)#take the first and remove it
         #if staircase.next() not called, staircaseHandler would not save the first intensity,
         #Error: miss align intensities and responses
-        try:
-            self._nextIntensity =self.currentStaircase.next()#gets updated by self.addData()
-        except:
-            self.runningStaircases.remove(self.currentStaircase)
-            if len(self.runningStaircases)==0: #If finished,set finished flag
-                self.finished=True
+        self._nextIntensity =self.currentStaircase.next()#gets updated by self.addData()
         #return value
         if not self.finished:
             #inform experiment of the condition (but not intensity, that might be overridden by user)
@@ -2457,7 +2452,7 @@ class MultiStairHandler(_BaseTrialHandler):
     def _startNewPass(self):
         """Create a new iteration of the running staircases for this pass.
 
-        This is not normally needed byt he user - it gets called at __init__
+        This is not normally needed by the user - it gets called at __init__
         and every time that next() runs out of trials for this pass.
         """
         self.thisPassRemaining = copy.copy(self.runningStaircases)
@@ -2469,6 +2464,8 @@ class MultiStairHandler(_BaseTrialHandler):
         This is essential to advance the staircase to a new intensity level!
         """
         self.currentStaircase.addResponse(result, intensity)
+        if self.currentStaircase.finished:
+            self.runningStaircases.remove(self.currentStaircase)
         #add the current data to experiment if poss
         if self.getExp() != None:#update the experiment handler too
             self.getExp().addData(self.name+".response", result)
@@ -2948,7 +2945,7 @@ def functionFromStaircase(intensities, responses, bins = 10):
                 a numpy array of intensity values (where each is the center of an intensity bin)
 
             meanCorrect
-                a numpy aray of mean % correct in each bin
+                a numpy array of mean % correct in each bin
 
             n
                 a numpy array of number of responses contributing to each mean

@@ -149,17 +149,8 @@ class FontManager(object):
                             fi_list.append(self._createFontInfo(fp,face))
                     else:
                         fi_list.append(self._createFontInfo(fp,face))
-                except FT_Exception, fte:
+                except Exception:
                     pass
-                except Exception, e:
-                    print
-                    print ' --- Error --- '
-                    print 'Error opening font path:', fp
-                    print 'Loaded OK count:', len(fi_list)
-                    import traceback
-                    traceback.print_exc()
-                    return None
-
 
         self.font_family_styles.sort()
 
@@ -374,7 +365,7 @@ class MonospaceFontAtlas(object):
         pow2_area=nextPow2(target_atlas_area)
         atlas_width=2048
         atlas_height=pow2_area/atlas_width
-        self.atlas=TextureAtlas(atlas_width,atlas_height)
+        self.atlas=TextureAtlas(atlas_width,atlas_height*2)
         charcode, gindex=face.get_first_char()
 
         while gindex:
@@ -480,19 +471,19 @@ class MonospaceFontAtlas(object):
 
     def __del__(self):
         self._face=None
-        if self.atlas.texid:
-            glDeleteTextures(1, self.atlas.texid)
+        if self.atlas.texid is not None:
+            #glDeleteTextures(1, self.atlas.texid)
             self.atlas.texid=None
             self.atlas=None
-        if self.charcode2displaylist:
-            for dl in self.charcode2displaylist.values():
-                glDeleteLists(dl, 1)
+        if self.charcode2displaylist is not None:
+            #for dl in self.charcode2displaylist.values():
+            #    glDeleteLists(dl, 1)
             self.charcode2displaylist.clear()
-        self.charcode2displaylist=None
-        if self.charcode2glyph:
+            self.charcode2displaylist=None
+        if self.charcode2glyph is not None:
             self.charcode2glyph.clear()
             self.charcode2glyph=None
-        if self.charcode2unichr:
+        if self.charcode2unichr is not None:
             self.charcode2unichr.clear()
             self.charcode2unichr=None
 

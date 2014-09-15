@@ -19,9 +19,14 @@ GL = pyglet.gl
 import ctypes
 
 #try to find avbin (we'll overload pyglet's load_library tool and then add some paths)
-import pyglet.lib
-import _pygletLibOverload
-pyglet.lib.load_library = _pygletLibOverload.load_library
+haveAvbin = False
+if pyglet.version < "1.2":
+    # This piece of code does no longer work with pyglet 1.2alpha and results in the pyglet.gl
+    # library to no longer be found when the window is created
+    import pyglet.lib
+    import _pygletLibOverload
+    pyglet.lib.load_library = _pygletLibOverload.load_library
+
 #on windows try to load avbin now (other libs can interfere)
 if sys.platform == 'win32':
     #make sure we also check in SysWOW64 if on 64-bit windows
@@ -37,7 +42,6 @@ if sys.platform == 'win32':
         # (prevents avbin loading)
     except WindowsError, e:
         haveAvbin = False
-
 
 import psychopy  # so we can get the __path__
 from psychopy import core, platform_specific, logging, prefs, monitors, event
@@ -95,7 +99,6 @@ openWindows = []
 
 # can provide a default window for mouse
 psychopy.event.visualOpenWindows = openWindows
-
 
 class Window(object):
     """Used to set up a context in which to draw objects,
@@ -391,6 +394,10 @@ class Window(object):
         Can be overridden by each stimulus, if units is specified on initialization.
         See :ref:`units` for explanation of options."""
         self.__dict__['units'] = value
+
+    def setUnits(self, value, log=True):
+        setAttribute(self, 'units', value, log=log)
+
     @attributeSetter
     def waitBlanking(self, value):
         """*None*, True or False.
@@ -497,6 +504,15 @@ class Window(object):
     def _finishFBOrender(self):
         GL.glUseProgram(0)
 
+    @classmethod
+    def dispatchAllWindowEvents(cls):
+        """
+        Dispatches events for all pyglet windows. Used by iohub 2.0
+        psychopy kb event integration.
+        """
+        wins = pyglet.window.get_platform().get_default_display().get_windows()
+        for win in wins: win.dispatch_events()
+
     def flip(self, clearBuffer=True):
         """Flip the front and back buffers after drawing everything for your
         frame. (This replaces the win.update() method, better reflecting what
@@ -509,40 +525,33 @@ class Window(object):
         for thisStim in self._toDraw:
             thisStim.draw()
 
+        flipThisFrame = self._startOfFlip()
+
         if self.useFBO:
-            self._prepareFBOrender()
-            #need blit the frambuffer object to the actual back buffer
+            if flipThisFrame:
+                self._prepareFBOrender()
+                #need blit the frambuffer object to the actual back buffer
 
-            # unbind the framebuffer as the render target
-            GL.glBindFramebufferEXT(GL.GL_FRAMEBUFFER_EXT, 0)
-            GL.glDisable(GL.GL_BLEND)
+                # unbind the framebuffer as the render target
+                GL.glBindFramebufferEXT(GL.GL_FRAMEBUFFER_EXT, 0)
+                GL.glDisable(GL.GL_BLEND)
+                stencilOn = GL.glIsEnabled(GL.GL_STENCIL_TEST)
+                GL.glDisable(GL.GL_STENCIL_TEST)
 
-            if self.bits != None:
-                self.bits._prepareFBOrender()
+                if self.bits != None:
+                    self.bits._prepareFBOrender()
 
-            # before flipping need to copy the renderBuffer to the frameBuffer
-            GL.glActiveTexture(GL.GL_TEXTURE0)
-            GL.glEnable(GL.GL_TEXTURE_2D)
-            GL.glBindTexture(GL.GL_TEXTURE_2D, self.frameTexture)
-            GL.glColor3f(1.0, 1.0, 1.0)  # glColor multiplies with texture
-            #draw the quad for the screen
-            GL.glBegin(GL.GL_QUADS)
+                # before flipping need to copy the renderBuffer to the frameBuffer
+                GL.glActiveTexture(GL.GL_TEXTURE0)
+                GL.glEnable(GL.GL_TEXTURE_2D)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, self.frameTexture)
+                GL.glColor3f(1.0, 1.0, 1.0)  # glColor multiplies with texture
+                GL.glColorMask(True, True, True, True)
 
-            GL.glTexCoord2f(0.0, 0.0)
-            GL.glVertex2f(-1.0, -1.0)
+                self._warp()
 
-            GL.glTexCoord2f(0.0, 1.0)
-            GL.glVertex2f(-1.0, 1.0)
-
-            GL.glTexCoord2f(1.0, 1.0)
-            GL.glVertex2f(1.0, 1.0)
-
-            GL.glTexCoord2f(1.0, 0.0)
-            GL.glVertex2f(1.0, -1.0)
-
-            GL.glEnd()
-            GL.glEnable(GL.GL_BLEND)
-            self._finishFBOrender()
+                GL.glEnable(GL.GL_BLEND)
+                self._finishFBOrender()
 
         #update the bits++ LUT
         if self.bits!=None: #try using modern BitsBox/BitsSharp class in pycrsltd
@@ -565,24 +574,28 @@ class Window(object):
             # movie updating
             if pyglet.version < '1.2':
                 pyglet.media.dispatch_events()  # for sounds to be processed
-            self.winHandle.flip()
+            if flipThisFrame:
+                self.winHandle.flip()
         else:
             if pygame.display.get_init():
-                pygame.display.flip()
+                if flipThisFrame:
+                    pygame.display.flip()
                 # keeps us in synch with system event queue
                 pygame.event.pump()
             else:
                 core.quit()  # we've unitialised pygame so quit
 
         if self.useFBO:
-            #set rendering back to the framebuffer object
-            GL.glBindFramebufferEXT(GL.GL_FRAMEBUFFER_EXT, self.frameBuffer)
-            GL.glReadBuffer(GL.GL_COLOR_ATTACHMENT0_EXT)
-            GL.glDrawBuffer(GL.GL_COLOR_ATTACHMENT0_EXT)
-            #set to no active rendering texture
-            GL.glActiveTexture(GL.GL_TEXTURE0)
-            GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
-
+            if flipThisFrame:
+                #set rendering back to the framebuffer object
+                GL.glBindFramebufferEXT(GL.GL_FRAMEBUFFER_EXT, self.frameBuffer)
+                GL.glReadBuffer(GL.GL_COLOR_ATTACHMENT0_EXT)
+                GL.glDrawBuffer(GL.GL_COLOR_ATTACHMENT0_EXT)
+                #set to no active rendering texture
+                GL.glActiveTexture(GL.GL_TEXTURE0)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+                if stencilOn:
+                    GL.glEnable(GL.GL_STENCIL_TEST)
         #rescale/reposition view of the window
         if self.viewScale is not None:
             GL.glMatrixMode(GL.GL_PROJECTION)
@@ -606,11 +619,10 @@ class Window(object):
             GL.glRotatef(self.viewOri, 0.0, 0.0, -1.0)
 
         #reset returned buffer for next frame
-        if clearBuffer:
-            GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+        self._endOfFlip(clearBuffer)
 
         #waitBlanking
-        if self.waitBlanking:
+        if self.waitBlanking and flipThisFrame:
             GL.glBegin(GL.GL_POINTS)
             GL.glColor4f(0, 0, 0, 0)
             if sys.platform == 'win32' and self.glVendor.startswith('ati'):
@@ -709,7 +721,7 @@ class Window(object):
                             "unnecessary because Window.waitBlanking=False")
 
         #Do the flipping with last flip as special case
-        for _ in range(flips-1):
+        for _junk in range(flips-1):
             self.flip(clearBuffer=False)
         self.flip(clearBuffer=clearBuffer)
 
@@ -755,7 +767,9 @@ class Window(object):
 
     def getMovieFrame(self, buffer='front'):
         """
-        Capture the current Window as an image.
+        Capture the current Window as an image. Saves to stack for saveMovieFrames().
+        As of v1.81.00 this also returns the frame as a PIL image
+
         This can be done at any time (usually after a .flip() command).
 
         Frames are stored in memory until a .saveMovieFrames(filename) command
@@ -771,6 +785,7 @@ class Window(object):
         """
         im = self._getFrame(buffer=buffer)
         self.movieFrames.append(im)
+        return im
 
     def _getFrame(self, buffer='front'):
         """
@@ -1018,12 +1033,22 @@ class Window(object):
         specify colors and their various implications."""
         self.__dict__['colorSpace'] = colorSpace
 
+    def setColor(self, color, colorSpace=None, operation='', log=None):
+        """Usually you can use 'stim.attribute = value' syntax instead,
+        but use this method if you want to set color and colorSpace simultaneously.
+        See `Window.color` for documentation on colors.
+        """
+        # Set color
+        setColor(self, color, colorSpace=colorSpace, operation=operation,
+                 rgbAttrib='rgb',  # or 'fillRGB' etc
+                 colorAttrib='color')
+
         # These spaces are 0-centred
-        if colorSpace in ['rgb', 'dkl', 'lms', 'hsv']:
+        if self.colorSpace in ['rgb', 'dkl', 'lms', 'hsv']:
             # RGB in range 0:1 and scaled for contrast
             desiredRGB = (self.rgb + 1) / 2.0
         # rgb255 and named are not...
-        elif type(colorSpace) is str:
+        elif type(self.colorSpace) is str:
             desiredRGB = (self.rgb) / 255.0
         else:  # some array/numeric stuff
             raise ValueError('invalid value "%s" for Window.colorSpace' %colorSpace)
@@ -1033,23 +1058,6 @@ class Window(object):
             if self.winType == 'pyglet':
                 self.winHandle.switch_to()
             GL.glClearColor(desiredRGB[0], desiredRGB[1], desiredRGB[2], 1.0)
-
-    def setColor(self, color, colorSpace=None, operation='', log=None):
-        """Usually you can use 'stim.attribute = value' syntax instead,
-        but use this method if you want to set color and colorSpace simultaneously.
-        See `Window.color` for documentation on colors.
-        """
-
-        # Set color
-        setColor(self, color, colorSpace=colorSpace, operation=operation,
-                 rgbAttrib='rgb',  # or 'fillRGB' etc
-                 colorAttrib='color')
-
-        # Set colorSpace to not-None
-        if colorSpace is None:
-            setAttribute(self, 'colorSpace', self.colorSpace, log)
-        else:
-            setAttribute(self, 'colorSpace', colorSpace, log)
 
     def setRGB(self, newRGB):
         """Deprecated: As of v1.61.00 please use `setColor()` instead
@@ -1098,19 +1106,13 @@ class Window(object):
 
     @attributeSetter
     def gamma(self, gamma):
-        """Set the monitor gamma for linearisation, using Bits++ if possible.
+        """Set the monitor gamma for linearization (don't use this if using a Bits++ or Bits#)
         Overrides monitor settings"""
 
         self._checkGamma(gamma)
 
         if self.bits is not None:
-            #first ensure that window gamma is 1.0
-            if self.winType == 'pygame':
-                pygame.display.set_gamma(1.0, 1.0, 1.0)
-            elif self.winType == 'pyglet':
-                self.winHandle.setGamma(self.winHandle, 1.0)
-            #then set bits++ to desired gamma
-            self.bits.setGamma(self.gamma)
+            raise DeprecationError, "Do not use try to set the gamma of a window with Bits++/Bits# enabled. It was ambiguous what should happen. Use the setGamma() function of the bits box instead"
         elif self.winType == 'pygame':
             pygame.display.set_gamma(self.gamma[0],
                                      self.gamma[1],
@@ -1122,6 +1124,12 @@ class Window(object):
         """Usually you can use 'stim.attribute = value' syntax instead,
         but use this method if you need to suppress the log message."""
         setAttribute(self, 'gamma', gamma, log)
+    @attributeSetter
+    def gammaRamp(self, newRamp):
+        if self.winType == 'pyglet':
+            self.winHandle.setGammaRamp(self.winHandle, newRamp)
+        else: #pyglet
+            self.winHandle.set_gamma_ramp(newRamp[:,0], newRamp[:,1], newRamp[:,2])
 
     def _checkGamma(self, gamma=None):
         if gamma is None:
@@ -1227,9 +1235,19 @@ class Window(object):
                                               screen=thisScreen,
                                               style=style)
         if sys.platform =='win32':
-            self._hw_handle=self.winHandle._hwnd
+            # pyHook window hwnd maps to:
+            # pyglet 1.14 -> window._hwnd
+            # pyglet 1.2a -> window._view_hwnd
+            if pyglet.version > "1.2":
+                self._hw_handle=self.winHandle._view_hwnd
+            else:
+                self._hw_handle=self.winHandle._hwnd
         elif sys.platform =='darwin':
-            self._hw_handle=self.winHandle._window.value
+            if pyglet.version > "1.2":
+                self._hw_handle= self.winHandle._nswindow.windowNumber()
+            else:
+                # TODO: check if this works on pyglet 1.4
+                self._hw_handle=self.winHandle._window.value
         elif sys.platform =='linux2':
             self._hw_handle=self.winHandle._window
 
@@ -1363,7 +1381,7 @@ class Window(object):
                              pyglet.gl.gl_info.get_version() >= '2.0')
 
         #setup screen color
-        self.colorSpace = self.colorSpace  # call attributeSetter
+        self.color = self.color  # call attributeSetter
         GL.glClearDepth(1.0)
 
         GL.glViewport(0, 0, int(self.size[0]), int(self.size[1]))
@@ -1394,7 +1412,7 @@ class Window(object):
         #identify gfx card vendor
         self.glVendor = GL.gl_info.get_vendor().lower()
 
-        if sys.platform == 'darwin':
+        if pyglet.version < "1.2" and sys.platform == 'darwin':
             platform_specific.syncSwapBuffers(1)
 
         requestedFBO=self.useFBO
@@ -1444,23 +1462,33 @@ class Window(object):
         GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA32F_ARB,
                         int(self.size[0]), int(self.size[1]), 0,
                         GL.GL_RGBA, GL.GL_FLOAT, None)
-
         #attach texture to the frame buffer
         GL.glFramebufferTexture2DEXT(GL.GL_FRAMEBUFFER_EXT,
                                      GL.GL_COLOR_ATTACHMENT0_EXT,
                                      GL.GL_TEXTURE_2D, self.frameTexture, 0)
+
+        #add a stencil buffer
+        self._stencilTexture = GL.GLuint()
+        GL.glGenRenderbuffersEXT(1, ctypes.byref(self._stencilTexture)) #like glGenTextures
+        GL.glBindRenderbufferEXT(GL.GL_RENDERBUFFER_EXT, self._stencilTexture)
+        GL.glRenderbufferStorageEXT(GL.GL_RENDERBUFFER_EXT, GL.GL_DEPTH24_STENCIL8_EXT,
+                                    int(self.size[0]), int(self.size[1]))
+        GL.glFramebufferRenderbufferEXT(GL.GL_FRAMEBUFFER_EXT,
+                                        GL.GL_STENCIL_ATTACHMENT_EXT,
+                                        GL.GL_RENDERBUFFER_EXT, self._stencilTexture)
+
         status = GL.glCheckFramebufferStatusEXT(GL.GL_FRAMEBUFFER_EXT)
         if status != GL.GL_FRAMEBUFFER_COMPLETE_EXT:
             logging.error("Error in framebuffer activation")
+            GL.glBindFramebufferEXT(GL.GL_FRAMEBUFFER_EXT, 0)#UNBIND THE FRAME BUFFER OBJECT THAT WE HAD CREATED
             return False
-        else:
-            logging.info("Successfully set up FBO")
         GL.glDisable(GL.GL_TEXTURE_2D)
-        #clear the buffer (otherwise the texture memory can contain junk)
+        #clear the buffers (otherwise the texture memory can contain junk from other app)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+        GL.glClear(GL.GL_STENCIL_BUFFER_BIT)
+        GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
         return True
-    @attributeSetter
-    def mouseVisible(self, visibility):
+    def setMouseVisible(self, visibility):
         """Sets the visibility of the mouse cursor.
 
         If Window was initilised with noGUI=True then the mouse is initially
@@ -1642,6 +1670,28 @@ class Window(object):
 
         return msPFavg, msPFstd, msPFmed  # msdrawAvg, msdrawSD, msfree
 
+    def _startOfFlip(self):
+        """Custom hardware classes may want to prevent flipping from occurring and
+        can override this method as needed. Return True to indicate hardware flip."""
+        return True
+
+    def _warp(self):
+        '''Perform a warp operation (in this case a copy operation without any warping)'''
+        GL.glBegin(GL.GL_QUADS)
+        GL.glTexCoord2f(0.0, 0.0)
+        GL.glVertex2f(-1.0, -1.0)
+        GL.glTexCoord2f(0.0, 1.0)
+        GL.glVertex2f(-1.0, 1.0)
+        GL.glTexCoord2f(1.0, 1.0)
+        GL.glVertex2f(1.0, 1.0)
+        GL.glTexCoord2f(1.0, 0.0)
+        GL.glVertex2f(1.0, -1.0)
+        GL.glEnd()
+
+    def _endOfFlip(self, clearBuffer):
+        """Override end of flip with custom color channel masking if required"""
+        if clearBuffer:
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT)
 
 def getMsPerFrame(myWin, nFrames=60, showVisual=False, msg='', msDelay=0.):
     """
