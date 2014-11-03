@@ -67,7 +67,7 @@ def compareTextFiles(pathToActual, pathToCorrect, delim=None):
         shutil.copyfile(pathToActual,pathToCorrect)
         assert foundComparisonFile #deliberately raise an error to see the warning message
         return
-    if delim==None:
+    if delim is None:
         if pathToCorrect.endswith('.csv'): delim=','
         elif pathToCorrect.endswith('.dlm'): delim='\t'
 
@@ -77,7 +77,7 @@ def compareTextFiles(pathToActual, pathToCorrect, delim=None):
         txtCorrect = open(pathToCorrect, 'r').readlines()
         assert len(txtActual)==len(txtCorrect), "The data file has the wrong number of lines"
         for lineN in range(len(txtActual)):
-            if delim==None:
+            if delim is None:
                 #just compare the entire line
                 assert lineActual==lineCorrect
             else:#word by word instead
@@ -164,9 +164,14 @@ def compareXlsxFiles(pathToActual, pathToCorrect):
 
 _travisTesting = bool(str(os.environ.get('TRAVIS')).lower() == 'true')  # in Travis-CI testing
 
+# Alternative skip_under_travis implementation;
+# Seems fine, but Jon / Jeremy can decide to use it or loose it.
+#
+# skip_under_travis = pytest.mark.skipif(_travisTesting == True,
+#                                       reason="Cannot be tested under Travis-CI")
+
 def skip_under_travis(fn=None):
     """Skip if a test is executed under Travis testing environment
-
     Could also be used as a decorator (if argument provided) or
     unparametrized in the code
     """

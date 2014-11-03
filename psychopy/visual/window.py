@@ -8,6 +8,7 @@
 
 import sys
 import os
+import weakref
 
 # Ensure setting pyglet.options['debug_gl'] to False is done prior to any
 # other calls to pyglet or pyglet submodules, otherwise it may not get picked
@@ -40,7 +41,16 @@ if sys.platform == 'win32':
         haveAvbin = False
         # either avbin isn't installed or scipy.stats has been imported
         # (prevents avbin loading)
-    except WindowsError, e:
+    except Exception, e:
+        # WindowsError on some systems
+        # AttributeError if using avbin5 from pyglet 1.2?
+        haveAvbin = False
+    except AttributeError:
+        # avbin is not found, causing exception in pyglet 1.2?? (running psychopy 1.81 standalone on windows 7):
+        #
+        # File "C:\Program Files (x86)\PsychoPy2\lib\site-packages\pyglet\media\avbin.py", line 158, in <module>
+        # av.avbin_get_version.restype = ctypes.c_int
+        # AttributeError: 'NoneType' object has no attribute 'avbin_get_version'
         haveAvbin = False
 
 import psychopy  # so we can get the __path__
@@ -94,8 +104,18 @@ DEBUG = False
 global IOHUB_ACTIVE
 IOHUB_ACTIVE = False
 
+
 #keep track of windows that have been opened
-openWindows = []
+#Use a list of weak references so that we don't stop the window being deleted
+class OpenWinList(list):
+    def append(self, item):
+        list.append(self, weakref.ref(item))
+    def remove(self, item):
+        for ref in self:
+            obj = ref()
+            if obj is None or item==obj:
+                list.remove(self, ref)
+openWindows = OpenWinList()
 
 # can provide a default window for mouse
 psychopy.event.visualOpenWindows = openWindows
@@ -205,6 +225,7 @@ class Window(object):
         """
         #what local vars are defined (these are the init params) for use by __repr__
         self._initParams = dir()
+        self._closed=False
         for unecess in ['self', 'checkTiming', 'rgb', 'dkl', ]:
             self._initParams.remove(unecess)
 
@@ -329,7 +350,7 @@ class Window(object):
 
         # gamma
         self.__dict__['gamma'] = gamma
-        self._setupGamma()
+        self._setupGamma(gamma)
 
         self.frameClock = core.Clock()  # from psycho/core
         self.frames = 0  # frames since last fps calc
@@ -366,11 +387,8 @@ class Window(object):
             logging.exp("Created %s = %s" %(self.name, str(self)))
 
     def __del__(self):
-        try:
-            GL.glDeleteTextures(1, self.frameTexture)
-            GL.glDeleteFramebuffersEXT( 1, self.frameBuffer)
-        except:
-            pass
+        if self._closed==False:
+            self.close()
 
     def __str__(self):
         className = 'Window'
@@ -499,11 +517,6 @@ class Window(object):
                              'args': args,
                              'kwargs': kwargs})
 
-    def _prepareFBOrender(self):
-        GL.glUseProgram(self._progFBOtoFrame)
-    def _finishFBOrender(self):
-        GL.glUseProgram(0)
-
     @classmethod
     def dispatchAllWindowEvents(cls):
         """
@@ -548,14 +561,14 @@ class Window(object):
                 GL.glColor3f(1.0, 1.0, 1.0)  # glColor multiplies with texture
                 GL.glColorMask(True, True, True, True)
 
-                self._warp()
+                self._renderFBO()
 
                 GL.glEnable(GL.GL_BLEND)
                 self._finishFBOrender()
 
-        #update the bits++ LUT
-        if self.bits!=None: #try using modern BitsBox/BitsSharp class in pycrsltd
-            self.bits._finishFBOrender()
+        #call this before flip() whether FBO was used or not
+        self._afterFBOrender()
+
         if self.winType == "pyglet":
             #make sure this is current context
             if glob_vars.currWindow != self:
@@ -950,6 +963,7 @@ class Window(object):
 
     def close(self):
         """Close the window (and reset the Bits++ if necess)."""
+        self._closed=True
         if (not self.useNativeGamma) and self.origGammaRamp is not None:
             setGammaRamp(self.winHandle, self.origGammaRamp)
         self.mouseVisible = True  # call attributeSetter
@@ -960,7 +974,10 @@ class Window(object):
             if IOHUB_ACTIVE:
                 from psychopy.iohub.client import ioHubConnection
                 ioHubConnection.ACTIVE_CONNECTION.unregisterPygletWindowHandles(self._hw_handle)
-            self.winHandle.close()
+            try:
+                self.winHandle.close()
+            except:
+                pass
         else:
             #pygame.quit()
             pygame.display.quit()
@@ -1072,14 +1089,14 @@ class Window(object):
                         (self.rgb[2]+1.0)/2.0,
                         1.0)
 
-    def _setupGamma(self):
+    def _setupGamma(self, gammaVal):
         """A private method to work out how to handle gamma for this Window
         given that the user might have specified an explicit value, or maybe
         gave a Monitor
         """
         self.origGammaRamp = None
         # determine which gamma value to use (or native ramp)
-        if self.gamma is not None:
+        if gammaVal is not None:
             self._checkGamma()
             self.useNativeGamma = False
         elif not self.monitor.gammaIsDefault():
@@ -1102,7 +1119,7 @@ class Window(object):
 
             if self.autoLog:
                 logging.info('Using gamma: self.gamma' + str(self.gamma))
-            self.__dict__['gamma'] = self.gamma  # using either pygame or bits++
+            self.gamma = gammaVal  # using either pygame or bits++
 
     @attributeSetter
     def gamma(self, gamma):
@@ -1202,9 +1219,11 @@ class Window(object):
             stencil_size = 8
         else:
             stencil_size = 0
+        vsync = 0
         # options that the user might want
         config = GL.Config(depth_size=8, double_buffer=True,
-                           stencil_size=stencil_size, stereo=self.stereo)
+                           stencil_size=stencil_size, stereo=self.stereo,
+                           vsync=vsync)
         allScrs = \
             pyglet.window.get_platform().get_default_display().get_screens()
         # Screen (from Exp Settings) is 1-indexed,
@@ -1243,11 +1262,10 @@ class Window(object):
             else:
                 self._hw_handle=self.winHandle._hwnd
         elif sys.platform =='darwin':
-            if pyglet.version > "1.2":
-                self._hw_handle= self.winHandle._nswindow.windowNumber()
-            else:
-                # TODO: check if this works on pyglet 1.4
-                self._hw_handle=self.winHandle._window.value
+            try:
+                self._hw_handle=self.winHandle._window.value #python 32bit (1.4. or 1.2 pyglet)
+            except:
+                self._hw_handle= self.winHandle._nswindow.windowNumber()#pyglet 1.2 with 64bit python?
         elif sys.platform =='linux2':
             self._hw_handle=self.winHandle._window
 
@@ -1306,7 +1324,7 @@ class Window(object):
             if ioHubConnection.ACTIVE_CONNECTION:
                 winhwnds=[]
                 for w in openWindows:
-                    winhwnds.append(w._hw_handle)
+                    winhwnds.append(w()._hw_handle)
                 if self._hw_handle not in winhwnds:
                     winhwnds.append(self._hw_handle)
                 ioHubConnection.ACTIVE_CONNECTION.registerPygletWindowHandles(*winhwnds)
@@ -1675,7 +1693,7 @@ class Window(object):
         can override this method as needed. Return True to indicate hardware flip."""
         return True
 
-    def _warp(self):
+    def _renderFBO(self):
         '''Perform a warp operation (in this case a copy operation without any warping)'''
         GL.glBegin(GL.GL_QUADS)
         GL.glTexCoord2f(0.0, 0.0)
@@ -1687,6 +1705,15 @@ class Window(object):
         GL.glTexCoord2f(1.0, 0.0)
         GL.glVertex2f(1.0, -1.0)
         GL.glEnd()
+
+    def _prepareFBOrender(self):
+        GL.glUseProgram(self._progFBOtoFrame)
+
+    def _finishFBOrender(self):
+        GL.glUseProgram(0)
+
+    def _afterFBOrender(self):
+        pass
 
     def _endOfFlip(self, clearBuffer):
         """Override end of flip with custom color channel masking if required"""

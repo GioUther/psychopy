@@ -48,11 +48,11 @@ class Dlg(wx.Dialog):
         else:
             print 'user cancelled'
     """
-    def __init__(self,title=_('PsychoPy dialogue'),
+    def __init__(self,title=_translate('PsychoPy dialogue'),
             pos=None, size=wx.DefaultSize,
             style=wx.DEFAULT_DIALOG_STYLE|wx.DIALOG_NO_PARENT,
-            labelButtonOK = _(" OK "),
-            labelButtonCancel = _(" Cancel ")):
+            labelButtonOK = _translate(" OK "),
+            labelButtonCancel = _translate(" Cancel ")):
         style=style|wx.RESIZE_BORDER
         global app  # avoid recreating for every gui
         app = ensureWxApp()
@@ -154,7 +154,7 @@ class Dlg(wx.Dialog):
         self.sizer.Add(buttons,1,flag=wx.ALIGN_RIGHT|wx.ALIGN_BOTTOM,border=5)
 
         self.SetSizerAndFit(self.sizer)
-        if self.pos == None:
+        if self.pos is None:
             self.Center()
         if self.ShowModal() == wx.ID_OK:
             self.data=[]
@@ -234,7 +234,7 @@ class DlgFromDict(Dlg):
                 self.dictionary[thisKey]=self.data[n]
 
 def fileSaveDlg(initFilePath="", initFileName="",
-                prompt=_("Select file to save"),
+                prompt=_translate("Select file to save"),
                 allowed=None):
     """A simple dialogue allowing write access to the file system.
     (Useful in case you collect an hour of data and then try to
@@ -257,7 +257,7 @@ def fileSaveDlg(initFilePath="", initFileName="",
 
     If user cancels the None is returned.
     """
-    if allowed==None:
+    if allowed is None:
         allowed = "All files (*.*)|*.*"  #\
             #"txt (*.txt)|*.txt" \
             #"pickled files (*.pickle, *.pkl)|*.pickle" \
@@ -277,7 +277,7 @@ def fileSaveDlg(initFilePath="", initFileName="",
 
 def fileOpenDlg(tryFilePath="",
                 tryFileName="",
-                prompt=_("Select file to open"),
+                prompt=_translate("Select file to open"),
                 allowed=None):
     """A simple dialogue allowing read access to the file system.
 
@@ -298,7 +298,7 @@ def fileOpenDlg(tryFilePath="",
 
     If user cancels, then None is returned.
     """
-    if allowed==None:
+    if allowed is None:
         allowed = "PsychoPy Data (*.psydat)|*.psydat|"\
             "txt (*.txt,*.dlm,*.csv)|*.txt;*.dlm;*.csv|" \
             "pickled files (*.pickle, *.pkl)|*.pickle|" \

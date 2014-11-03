@@ -128,6 +128,7 @@ def _onPygletMousePress(x,y, button, modifiers):
 
 def _onPygletMouseRelease(x,y, button, modifiers):
     global mouseButtons
+    label = 'unknownButton'
     if button == pyglet.window.mouse.LEFT:
         mouseButtons[0]=0
         label='Left'
@@ -223,7 +224,7 @@ def getKeys(keyList=None, timeStamped=False):
             keys = _keyBuffer
             #_keyBuffer = []  # DO /NOT/ CLEAR THE KEY BUFFER ENTIRELY
 
-    if keyList==None:
+    if keyList is None:
         _keyBuffer = [] #clear buffer entirely
         targets=keys  # equivalent behavior to getKeys()
     else:
@@ -274,7 +275,7 @@ def waitKeys(maxWait=float('inf'), keyList=None, timeStamped=False):
 
     # Check for keypresses until maxWait is exceeded
     timer = psychopy.core.Clock()
-    while key == None and timer.getTime() < maxWait:
+    while key is None and timer.getTime() < maxWait:
         # Pump events on pyglet windows if they exist
         if havePyglet:
             wins = pyglet.window.get_platform().get_default_display().get_windows()
@@ -324,7 +325,7 @@ class Mouse:
                 # to avoid circular imports, visualOpenWindows is defined by visual.py
                 # to be the same object as visual.openWindows and is added by visual.py
                 # into event's namespace; it's circular to "import visual" here in event
-                self.win = visualOpenWindows[0]
+                self.win = visualOpenWindows[0]()
                 logging.info('Mouse: using default window')
             except NameError, IndexError:
                 logging.error('Mouse: failed to get a default visual.Window (need to create one first)')

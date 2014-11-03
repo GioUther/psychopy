@@ -1,70 +1,66 @@
 # -*- coding: utf-8 -*-
-"""
-ioHub
-Common Eye Tracker Interface for the GazePoint GP3 system.
-.. file: ioHub/devices/eyetracker/hw/gazepoint/gp3/eyetracker.py
+# ioHub Python Module
+# .. file: psychopy/iohub/devices/eyetracker/hw/gazepoint/gp3/eyetracker.py
+#
+# .. fileauthor:: Martin Guest Sol Simpson
+#
+# Distributed under the terms of the GNU General Public License
+# (GPL version 3 or any later version).
+#
+#
 
-Distributed under the terms of the GNU General Public License
-(GPL version 3 or any later version).
-
-.. moduleauthor:: ????
-.. fileauthor:: ???
-"""
-
-import numpy as np 
-from ...... import print2err,printExceptionDetailsToStdErr
-from ......constants import EventConstants, EyeTrackerConstants
+from ...... import print2err, printExceptionDetailsToStdErr, to_numeric
+from ......constants import EyeTrackerConstants
 from ..... import Computer
 from .... import EyeTrackerDevice
 from ....eye_events import *
-from gevent import socket, sleep
+from gevent import socket
 import errno
-#from ...... import to_numeric
 
-getTime=Computer.getTime
-
-def to_numeric(lit):
-    'Return value of numeric literal string or ValueError exception'
-    # Handle '0'
-    if lit == '0': return 0
-    # Hex/Binary
-    litneg = lit[1:] if lit[0] == '-' else lit
-    if litneg[0] == '0':
-        if litneg[1] in 'xX':
-            return int(lit,16)
-        elif litneg[1] in 'bB':
-            return int(lit,2)
-        else:
-            try:
-                return int(lit,8)
-            except ValueError:
-                pass
-
-    # Int/Float/Complex
-    try:
-        return int(lit)
-    except ValueError:
-        pass
-    try:
-        return float(lit)
-    except ValueError:
-        pass
-    try:
-        return complex(lit)
-    except ValueError:
-        pass
-
-    # return original str
-    return lit
+ET_UNDEFINED = EyeTrackerConstants.UNDEFINED
+getTime = Computer.getTime
 
 class EyeTracker(EyeTrackerDevice):
     """
-    TheEyeTribe implementation of the Common Eye Tracker Interface can be used
-    by providing the following EyeTracker path as the device class in 
-    the iohub_config.yaml device settings file:
+    The Gazepoint GP3 implementation of the Common Eye Tracker Interface can be
+    used by providing the following EyeTracker class path as the eye tracker
+    device name in the iohub_config.yaml device settings file::
         
-        eyetracker.hw.theeyetribe.EyeTracker
-        
+        eyetracker.hw.gazepoint.gp3.EyeTracker
+
+    .. note:: The Gazepoint control application **must** be running
+              while using this interface.
+
+    The Gazepoint GP3 interface supports:
+    * connection / disconnection to the GP3 device.
+    * Starting / stopping when eye position data is collected.
+    * Sending text messages to the GP3 system.
+    * current gaze position information, using the FPOGX, FPOGY fields from
+      the most receint REC message received from the GP3
+    * Generation of the BinocularEyeSampleEvent type based on the GP3 REC
+      message type. The following fields of an eye sample event are populated
+      populated:
+        * device_time: uses TIME field of the REC message
+        * logged_time: the time the REC message was received / read.
+        * time: currently set to equal the time the REC message was received.
+        * left_gaze_x: uses LFOGX
+        * left_gaze_y: uses LFOGY
+        * right_gaze_x: uses RFOGX
+        * right_gaze_y: uses RFOGY
+        * combined_gaze_x: uses FPOGX
+        * combined_gaze_Y: uses FPOGY
+        * left_pupil_size: uses LPD and is diameter in pixels
+        * right_pupil_size: uses RPD and is diamter in pixels
+
+    The Gazepoint GP3 interface uses a polling method to check for new eye
+    tracker data. The default polling interval is 5 msec. This can be changed
+    in the device's configuration settings for the experiment if needed.
+
+    The following functionality has not yet been implemented in the ioHub GP3
+    interface:
+    * Built-in calibration graphics
+    * Calculation of the REC event delay in ioHub. Therefore the event time
+      stamps should not be considered msec accurate.
     """
 
     # GP3 tracker times are received as msec
@@ -73,10 +69,6 @@ class EyeTracker(EyeTrackerDevice):
     EVENT_CLASS_NAMES=['MonocularEyeSampleEvent','BinocularEyeSampleEvent','FixationStartEvent',
                          'FixationEndEvent', 'SaccadeStartEvent', 'SaccadeEndEvent',
                          'BlinkStartEvent', 'BlinkEndEvent']
-
-    # Set in the __init__ to to be the instance of the pyTribe.TheEyeTribe
-    # interface.
-
     _recording=False
     __slots__=['_gp3','_rx_buffer']
     #_hpb=None
@@ -104,7 +96,9 @@ class EyeTracker(EyeTrackerDevice):
         
     def trackerTime(self):
         """
-        Current eye tracker time in the eye tracker's native time base. 
+        TO DO: Method not implemented in GP3 interface.
+
+        Current eye tracker time in the eye tracker's native time base.
         The TET system uses a usec timebase.
         
         Args: 
@@ -121,6 +115,8 @@ class EyeTracker(EyeTrackerDevice):
         
     def trackerSec(self):
         """
+        TO DO: Method not implemented in GP3 interface.
+
         Current eye tracker time, normalized to sec.msec format.
 
         Args: 
@@ -174,7 +170,10 @@ class EyeTracker(EyeTrackerDevice):
                         msg = dict(type=msgtoks[0])
                         for t in msgtoks[1:]:
                             tkey, tval = t.split("=")
-                            msg[tkey]=to_numeric(tval.strip('"'))
+                            try:
+                                msg[tkey]=to_numeric(tval.strip('"'))
+                            except:
+                                msg[tkey] = tval
                         msgs.append(msg)
                 else:
                     print2err("Incomplete Message Found: [",msgtxt,']')
@@ -185,11 +184,11 @@ class EyeTracker(EyeTrackerDevice):
 
     def setConnectionState(self, enable):
         """
-        setConnectionState is a no-op when using the TET system, as the
-        connection is established when the TheEyeTribe EyeTracker class is created,
-        and remains active until the program ends, or a error occurs resulting
-        in the loss of the tracker connection.
+        Connects or disconnects from the GP3 eye tracking hardware.
 
+        By default, when ioHub is started, a connection is automatically made,
+        and when the experiment completes and ioHub is closed, so is the GP3
+        connection.
         Args:
             enable (bool): True = enable the connection, False = disable the connection.
 
@@ -206,16 +205,16 @@ class EyeTracker(EyeTrackerDevice):
                 init_connection_str='<SET ID="ENABLE_SEND_CURSOR" STATE="1" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_POG_LEFT" STATE="1" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_POG_RIGHT" STATE="1" />\r\n'
-                #init_connection_str+='<SET ID="ENABLE_SEND_PUPIL_LEFT" STATE="1" />\r\n'
-                #init_connection_str+='<SET ID="ENABLE_SEND_PUPIL_RIGHT" STATE="1" />\r\n'
+                init_connection_str+='<SET ID="ENABLE_SEND_USER_DATA" STATE="1"/>\r\n'
+                init_connection_str+='<SET ID="ENABLE_SEND_PUPIL_LEFT" STATE="1" />\r\n'
+                init_connection_str+='<SET ID="ENABLE_SEND_PUPIL_RIGHT" STATE="1" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_POG_FIX" STATE="1" />\r\n'
+                init_connection_str+='<SET ID="ENABLE_SEND_POG_BEST" STATE="1" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_DATA" STATE="0" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_COUNTER" STATE="1" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_TIME" STATE="1" />\r\n'
                 init_connection_str+='<SET ID="ENABLE_SEND_TIME_TICK" STATE="1" />\r\n'
                 self._gp3.sendall(str.encode(init_connection_str))
-#               self._gp3.send(str.encode('<SET ID="ENABLE_SEND_POG_BEST" STATE="1" />\r\n'))
-#               self._gp3.send(str.encode('<SET ID="ENABLE_SEND_USER_DATA" />\r\n'))
                 # block for upp to 1 second to get reply txt.
                 strStatus = self._checkForNetData(1.0)
                 if strStatus:
@@ -243,7 +242,7 @@ class EyeTracker(EyeTrackerDevice):
         
     def isConnected(self):
         """
-        isConnected returns whether the TheEyeTribe is connected to the experiment PC
+        isConnected returns whether the GP3 is connected to the experiment PC
         and if the tracker state is valid. Returns True if the tracker can be 
         put into Record mode, etc and False if there is an error with the tracker
         or tracker connection with the experiment PC.
@@ -257,52 +256,20 @@ class EyeTracker(EyeTrackerDevice):
         """
         return self._gp3 is not None
 
-    def sendMessage(self,message_contents,time_offset=None):
+    def sendMessage(self, message_contents, time_offset=None):
         """
-        The sendMessage method is not supported by the TheEyeTribe implementation
-        of the Common Eye Tracker Interface, as the TheEyeTribe SDK does not support
-        saving eye data to a native data file during recording.
+        The sendMessage method sends the message_contents str to the GP3.
         """
-        # TODO TET Implementation, NOT part of common API methods ever used
-        return EyeTrackerConstants.EYETRACKER_INTERFACE_METHOD_NOT_SUPPORTED
-
-    def sendCommand(self, key, value=None):
-        """
-        The sendCommand method is not supported by the TheEyeTribe Common Eye Tracker
-        Interface.
-        """
-        
-        # TODO TET Implementation, NOT part of common API methods ever used
-        return EyeTrackerConstants.EYETRACKER_INTERFACE_METHOD_NOT_SUPPORTED
-
-#    def runSetupProcedure(self,starting_state=EyeTrackerConstants.DEFAULT_SETUP_PROCEDURE):
-#        """
-#        runSetupProcedure performs a calibration routine for the TheEyeTribe
-#        eye tracking system.
-#        
-#        Result:
-#            bool: True if setup / calibration procedure passed, False otherwise. If false, should likely exit experiment.
-#        """
-#        try:
-#            # TODO TET Implementation
-#            calibration_properties=self.getConfiguration().get('calibration')
-#            screenColor=calibration_properties.get('screen_background_color')
-#            # [r,g,b] of screen
-#
-#            #genv=TETPsychopyCalibrationGraphics(self,screenColor=screenColor)
-#
-#            #calibrationOK=genv.runCalibration()
-#            #genv.window.close()
-#            
-#            #genv._unregisterEventMonitors()
-#            #genv.clearAllEventBuffers()
-#            
-#            return EyeTrackerConstants.EYETRACKER_INTERFACE_METHOD_NOT_SUPPORTED
-#            
-#        except:
-#            print2err("Error during runSetupProcedure")
-#            printExceptionDetailsToStdErr()
-#        return EyeTrackerConstants.EYETRACKER_ERROR
+        try:
+            if time_offset is not None:
+                print2err("Warning: GP3 EyeTracker.sendMessage time_offset arguement is ignored by this eye tracker interface.")
+            if self._gp3 and self.isRecordingEnabled() is True:
+                strMessage='<SET ID="USER_DATA" VALUE="{0}"/>\r\n'.format(message_contents)
+                self._gp3.sendall(strMessage)
+        except:
+            print2err('Problems sending message: {0}'.FORMAT(message_contents))
+            printExceptionDetailsToStdErr()
+        return EyeTrackerConstants.EYETRACKER_OK
 
     def enableEventReporting(self,enabled=True):
         """
@@ -375,7 +342,7 @@ class EyeTracker(EyeTrackerDevice):
 
     def _poll(self):
         """
-        This method is called by gp3 every n msec based on the polling  interval
+        This method is called by gp3 every n msec based on the polling interval
         set in the eye tracker config. Default is 5 msec
         """
         try:
@@ -399,16 +366,9 @@ class EyeTracker(EyeTrackerDevice):
             for m in msgs:
                 if m.get('type') == 'REC':
                     # Always tracks binoc, so always use BINOCULAR_EYE_SAMPLE
-                    #print2err("REC MSG: ",m)
                     event_type=EventConstants.BINOCULAR_EYE_SAMPLE
 
-                    # <REC TIME="2.123" TIME_TICK="79876879598675" FPOGX="0.00000"
-                    # FPOGY="0.00000" FPOGS="0.00000"
-                    # FPOGD="0.44469" FPOGID="0" FPOGV="0" CX="0.53281"
-                    # CY="0.59082" CS="0" />
-                    #data = incomingData.split('"')
-
-                    event_timestamp = m.get('TIME',EyeTrackerConstants.UNDEFINED) #in seconds, take from the REC TIME field
+                    event_timestamp = m.get('TIME',ET_UNDEFINED) #in seconds, take from the REC TIME field
 
                     # TODO event_delay, how to calulate TBD.
                     event_delay = 0.0 # SHOULD BE something like
@@ -421,28 +381,45 @@ class EyeTracker(EyeTrackerDevice):
 
                     self._last_poll_time = logged_time
 
-                    # TODO: fill in eye sample specific data fields
-                    # IMP: Use _eyeTrackerToDisplayCoords method to set values for array
-                    left_gaze_x = m.get('LPOGX',EyeTrackerConstants.UNDEFINED)
-                    left_gaze_y = m.get('LPOGY',EyeTrackerConstants.UNDEFINED)
+                    left_gaze_x = m.get('LPOGX',ET_UNDEFINED)
+                    left_gaze_y = m.get('LPOGY',ET_UNDEFINED)
                     left_gaze_x, left_gaze_y = self._eyeTrackerToDisplayCoords((left_gaze_x,left_gaze_y))
-                    left_pupil_size = EyeTrackerConstants.UNDEFINED
+                    left_pupil_size = m.get('LPD',ET_UNDEFINED) #diameter of pupil in pixels
 
-                    # IMP: Use _eyeTrackerToDisplayCoords method to set values for array
-                    right_gaze_x = m.get('RPOGX',EyeTrackerConstants.UNDEFINED)
-                    right_gaze_y = m.get('RPOGY',EyeTrackerConstants.UNDEFINED)
+                    right_gaze_x = m.get('RPOGX',ET_UNDEFINED)
+                    right_gaze_y = m.get('RPOGY',ET_UNDEFINED)
                     right_gaze_x, right_gaze_y = self._eyeTrackerToDisplayCoords((right_gaze_x,right_gaze_y))
-                    right_pupil_size = EyeTrackerConstants.UNDEFINED
+                    right_pupil_size = m.get('RPD',ET_UNDEFINED) #diameter of pupil in pixels
 
-                    #TODO: Set combined vars to the GP3 provided
                     # left / right eye pos avg. data
-                    combined_gaze_x = m.get('FPOGX',EyeTrackerConstants.UNDEFINED)
-                    combined_gaze_y = m.get('FPOGY',EyeTrackerConstants.UNDEFINED)
+                    combined_gaze_x = m.get('FPOGX',ET_UNDEFINED)
+                    combined_gaze_y = m.get('FPOGY',ET_UNDEFINED)
                     combined_gaze_x, combined_gaze_y = self._eyeTrackerToDisplayCoords((combined_gaze_x,combined_gaze_y))
 
-                    # TODO: status field set to indicate missing data
-                    # val 2 = left eye missing data, 20 = right eye missing data, 22 = both eyes missing
+                    #
+                    # The X and Y-coordinates of the left and right eye pupil
+                    # in the camera image, as a fraction of the
+                    # camera image size.
+                    left_raw_x = m.get('LPCX',ET_UNDEFINED)
+                    left_raw_y = m.get('LPCY',ET_UNDEFINED)
+                    right_raw_x = m.get('RPCX',ET_UNDEFINED)
+                    right_raw_y = m.get('RPCY',ET_UNDEFINED)
+
+
+                    left_eye_status = m.get('LPOGV',ET_UNDEFINED)
+                    right_eye_status = m.get('RPOGV',ET_UNDEFINED)
+
+                    # 0 = both eyes OK
                     status = 0
+                    if left_eye_status == right_eye_status and right_eye_status == 0:
+                        # both eyes are missing
+                        status = 22
+                    elif left_eye_status == 0:
+                        # Just left eye missing
+                        status = 20
+                    elif right_eye_status == 0:
+                        # Just right eye missing
+                        status = 2
 
 
                     binocSample=[
@@ -459,53 +436,53 @@ class EyeTracker(EyeTrackerDevice):
                              0,
                              left_gaze_x,
                              left_gaze_y,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             left_raw_x,
+                             left_raw_y,
                              left_pupil_size,
-                             # TODO: Confirm what 'pupil size' actually is in GP3
-                             EyeTrackerConstants.PUPIL_AREA,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
+                             EyeTrackerConstants.PUPIL_DIAMETER,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
                              right_gaze_x,
                              right_gaze_y,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             right_raw_x,
+                             right_raw_y,
                              right_pupil_size,
-                             # TODO: Confirm what 'pupil size' actually is in GP3
-                             EyeTrackerConstants.PUPIL_AREA,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
-                             EyeTrackerConstants.UNDEFINED,
+                             EyeTrackerConstants.PUPIL_DIAMETER,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
+                             ET_UNDEFINED,
                              status
                                  ]
 
                     self._addNativeEventToBuffer((binocSample,(combined_gaze_x,combined_gaze_y)))
 
+                elif m.get('type') == 'ACK':
+                    print2err("ACK Received: ", m)
                 else:
                     # Message type is not being handled.
                     print2err("UNHANDLED GP3 MESSAGE: ", m)
-                
+
         except Exception:
             print2err("ERROR occurred during GP3 Sample Callback.")
             printExceptionDetailsToStdErr()

@@ -35,12 +35,12 @@ class MenuFrame(wx.Frame):
         self.menuBar = wx.MenuBar()
 
         self.viewMenu = wx.Menu()
-        self.menuBar.Append(self.viewMenu, _('&View'))
-        self.viewMenu.Append(self.app.IDs.openBuilderView, _("&Open Builder view\t%s") %self.app.keys['switchToBuilder'], _("Open a new Builder view"))
+        self.menuBar.Append(self.viewMenu, _translate('&View'))
+        self.viewMenu.Append(self.app.IDs.openBuilderView, _translate("&Open Builder view\t%s") %self.app.keys['switchToBuilder'], _translate("Open a new Builder view"))
         wx.EVT_MENU(self, self.app.IDs.openBuilderView,  self.app.showBuilder)
-        self.viewMenu.Append(self.app.IDs.openCoderView, _("&Open Coder view\t%s") %self.app.keys['switchToCoder'], _("Open a new Coder view"))
+        self.viewMenu.Append(self.app.IDs.openCoderView, _translate("&Open Coder view\t%s") %self.app.keys['switchToCoder'], _translate("Open a new Coder view"))
         wx.EVT_MENU(self, self.app.IDs.openCoderView,  self.app.showCoder)
-        item=self.viewMenu.Append(wx.ID_EXIT, _("&Quit\t%s") %self.app.keys['quit'], _("Terminate the program"))
+        item=self.viewMenu.Append(wx.ID_EXIT, _translate("&Quit\t%s") %self.app.keys['quit'], _translate("Terminate the program"))
         self.Bind(wx.EVT_MENU, self.app.quit, item)
 
         self.SetMenuBar(self.menuBar)
@@ -105,13 +105,13 @@ class PsychoPyApp(wx.App):
             splash = AS.AdvancedSplash(None, bitmap=splashBitmap, timeout=3000, style=AS.AS_TIMEOUT|wx.FRAME_SHAPED,
                                       shadowcolour=wx.RED)#could use this in future for transparency
             splash.SetTextPosition((10,240))
-            splash.SetText(_("  Loading libraries..."))
+            splash.SetText(_translate("  Loading libraries..."))
         else:
             splash=None
 
         #LONG IMPORTS - these need to be imported after splash screen starts (they're slow)
         #but then that they end up being local so keep track in self
-        if splash: splash.SetText(_("  Loading PsychoPy2..."))
+        if splash: splash.SetText(_translate("  Loading PsychoPy2..."))
         from psychopy import compatibility
         from psychopy.app import coder, builder, dialogs, wxIDs, urls #import coder and builder here but only use them later
         self.keys = self.prefs.keys
@@ -196,7 +196,7 @@ class PsychoPyApp(wx.App):
 
         #create both frame for coder/builder as necess
         if splash:
-            splash.SetText(_("  Creating frames..."))
+            splash.SetText(_translate("  Creating frames..."))
         self.coder = None
         self.builderFrames = []
         self.copiedRoutine=None
@@ -216,11 +216,11 @@ class PsychoPyApp(wx.App):
 
         ok, msg = compatibility.checkCompatibility(last, self.version, self.prefs, fix=True)
         if not ok and not self.firstRun and not self.testMode:  #tell the user what has changed
-            dlg = dialogs.MessageDialog(parent=None,message=msg,type='Info', title=_("Compatibility information"))
+            dlg = dialogs.MessageDialog(parent=None,message=msg,type='Info', title=_translate("Compatibility information"))
             dlg.ShowModal()
 
         if self.prefs.app['showStartupTips'] and not self.testMode:
-            tipFile = os.path.join(self.prefs.paths['resources'], _("tips.txt"))
+            tipFile = os.path.join(self.prefs.paths['resources'], _translate("tips.txt"))
             tipIndex = self.prefs.appData['tipIndex']
             tp = wx.CreateFileTipProvider(tipFile, tipIndex)
             showTip = wx.ShowTip(None, tp)
@@ -317,7 +317,7 @@ class PsychoPyApp(wx.App):
         return table
     def showCoder(self, event=None, fileList=None):
         from psychopy.app import coder#have to reimport because it is ony local to __init__ so far
-        if self.coder==None:
+        if self.coder is None:
             self.coder=coder.CoderFrame(None, -1,
                       title="PsychoPy2 Coder (IDE) (v%s)" %self.version,
                       files = fileList, app=self)
@@ -353,7 +353,7 @@ class PsychoPyApp(wx.App):
             self.SetTopWindow(thisFrame)
     #def showShell(self, event=None):
     #    from psychopy.app import ipythonShell#have to reimport because it is ony local to __init__ so far
-    #    if self.shell==None:
+    #    if self.shell is None:
     #        self.shell = ipythonShell.ShellFrame(None, -1,
     #            title="IPython in PsychoPy (v%s)" %self.version, app=self)
     #        self.shell.Show()
@@ -408,7 +408,7 @@ class PsychoPyApp(wx.App):
     def MacOpenFile(self,fileName):
         logging.debug('PsychoPyApp: Received Mac file dropped event')
         if fileName.endswith('.py'):
-            if self.coder==None:
+            if self.coder is None:
                 self.showCoder()
             self.coder.setCurrentDoc(fileName)
         elif fileName.endswith('.psyexp'):
@@ -464,7 +464,7 @@ class PsychoPyApp(wx.App):
         #save info about current frames for next run
         if self.coder and len(self.builderFrames)==0:
             self.prefs.appData['lastFrame']='coder'
-        elif self.coder==None:
+        elif self.coder is None:
             self.prefs.appData['lastFrame']='builder'
         else:
             self.prefs.appData['lastFrame']='both'
@@ -492,7 +492,7 @@ class PsychoPyApp(wx.App):
         logging.debug('PsychoPyApp: Showing about dlg')
 
         license = open(os.path.join(self.prefs.paths['psychopy'],'LICENSE.txt'), 'rU').read()
-        msg = _("""For stimulus generation and experimental control in python.
+        msg = _translate("""For stimulus generation and experimental control in python.
 
             PsychoPy depends on your feedback. If something doesn't work
             then let us know at psychopy-users@googlegroups.com""").replace('    ', '')

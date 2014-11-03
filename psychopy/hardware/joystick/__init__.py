@@ -80,7 +80,7 @@ class Joystick(object):
                 logging.error("You need to open a window before creating your joystick")
             else:
                 for win in visual.openWindows:
-                    win._eventDispatchers.append(self._device.device)
+                    win()._eventDispatchers.append(self._device.device)
         else:
             pygame.joystick.init()
             self._device=pygame.joystick.Joystick(id)
@@ -182,6 +182,7 @@ class Joystick(object):
         """
         if backend=='pyglet':
             val=self.getAllAxes()[axisId]
-            if val==None: val=0
+            if val is None:
+                val=0
             return val
         else: return self._device.get_axis(axisId)

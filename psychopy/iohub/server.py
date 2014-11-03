@@ -34,10 +34,8 @@ try:
     m.patch()
 except:
     pass
-try:
-    import psutil
-except:
-    pass
+
+import psutil
 
 class udpServer(DatagramServer):
     def __init__(self,ioHubServer,address,coder='msgpack'):
@@ -375,10 +373,10 @@ class udpServer(DatagramServer):
         return self.iohub.clearEventBuffer()
 
     def enableHighPriority(self,disable_gc=True):
-        Computer.enableHighPriority(disable_gc)
+        return Computer.enableHighPriority(disable_gc)
 
     def disableHighPriority(self):
-        Computer.disableHighPriority()
+        return Computer.disableHighPriority()
 
     def getProcessAffinity(self):
         return Computer.getCurrentProcessAffinity()
@@ -434,7 +432,7 @@ class ioServer(object):
         self._session_id=None
         self._experiment_id=None
 
-        self.log("Server Time Offset: {0}".format(Computer.globalClock.getLastResetTime()))
+        self.log("Server Time Offset: {0}".format(Computer.global_clock.getLastResetTime()))
 
         self._hookManager=None
         self.emrt_file=None
@@ -821,12 +819,9 @@ class ioServer(object):
             if exp and self._session_id and self._experiment_id:
                 while len(self._logMessageBuffer):
                     lm=self._logMessageBuffer.popleft()
-                    #print2err('>>>!!! Logging BACKLOGGED LogEvent: ',lm,", ",(exp, self._session_id, self._experiment_id))
                     exp.log(*lm)
-                #print2err('>>>!!! Logging LogEvent: ',(text,level,log_time),", ",(exp, self._session_id, self._experiment_id))
                 exp.log(text,level,log_time)
             else:
-                #print2err('>>>!!! Adding LogEvent to _logMessageBuffer: ',(text,level,log_time),", ",(exp, self._session_id, self._experiment_id))
                 self._logMessageBuffer.append((text,level,log_time))
         except:
             printExceptionDetailsToStdErr()

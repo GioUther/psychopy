@@ -1,20 +1,24 @@
-"""
-ioHub Python Module
-.. file: iohub/__init__.py
+# -*- coding: utf-8 -*-
+# ioHub Python Module
+# .. file: psychopy/iohub/__init__.py
+#
+# fileauthor: Sol Simpson <sol@isolver-software.com>
+#
+# Copyright (C) 2012-2014 iSolver Software Solutions
+# Distributed under the terms of the GNU General Public License
+# (GPL version 3 or any later version).
 
-fileauthor: Sol Simpson <sol@isolver-software.com>
-
-Copyright (C) 2012-2013 iSolver Software Solutions
-Distributed under the terms of the GNU General Public License (GPL version 3 or any later version).
-
-.. moduleauthor:: Sol Simpson <sol@isolver-software.com> + contributors, please see credits section of documentation.
-"""
 from __future__ import division
 import sys
 if sys.platform == 'darwin':
     import objc
 
 from psychopy.clock import  MonotonicClock, monotonicClock
+
+try:
+    import ujson as json
+except:
+    import json
 
 try:
     from yaml import load, dump
@@ -30,6 +34,8 @@ if sys.version_info[0] != 2 or sys.version_info[1] >= 7:
     def construct_yaml_unistr(self, node):
         return self.construct_scalar(node)
     Loader.add_constructor(u'tag:yaml.org,2002:str', construct_yaml_unistr)
+
+EXP_SCRIPT_DIRECTORY = ''
 
 import constants
 from constants import EventConstants, DeviceConstants
@@ -59,7 +65,7 @@ try:
 except Exception, e:
     print2err("WARNING: ioHub DataStore could not be loaded. DataStore functionality will be disabled. Error: ")
     printExceptionDetailsToStdErr()
-    
+
 import client
 from client import ioHubConnection, launchHubServer, ioHubExperimentRuntime
 import server
@@ -91,7 +97,7 @@ def start(**kwargs):
         sys.exit(1)
 
     # TODO: Use info from win.monitor to set screen info and eye distance if possible.
-    #win = openWindows[0]
+    #win = openWindows[0]()
 
     #win_methods = [m for m in dir(win) if m[0] != '_']
     #pyglet_win_methods = [m for m in dir(win.winHandle) if m[0] != '_']
