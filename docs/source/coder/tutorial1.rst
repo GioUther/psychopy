@@ -23,21 +23,21 @@ Building stimuli is extremely easy. All you need to do is create a
 .. code-block:: python
     :linenos:
 
-    from psychopy import visual, core  # import some libraries from PsychoPy
+    from psychopy import visual, core  # Import some libraries from PsychoPy
 
-    #create a window
-    mywin = visual.Window([800,600], monitor="testMonitor", units="deg")
+    # Create a window
+    mywin = visual.Window([800, 600], monitor="testMonitor", units="deg")
 
-    #create some stimuli
-    grating = visual.GratingStim(win=mywin, mask="circle", size=3, pos=[-4,0], sf=3)
+    # Create some stimuli
+    grating = visual.GratingStim(win=mywin, mask="circle", size=3, pos=[-4, 0], sf=3)
     fixation = visual.GratingStim(win=mywin, size=0.5, pos=[0,0], sf=0, rgb=-1)
 
-    #draw the stimuli and update the window
+    # Draw the stimuli and update the window
     grating.draw()
     fixation.draw()
     mywin.update()
 
-    #pause, so you get a chance to see it!
+    # Pause, so you get a chance to see it!
     core.wait(5.0)
 
 .. note:: **For those new to Python.** Did you notice that the grating and the fixation stimuli both call :mod:`~psychopy.visual.GratingStim` but have different arguments? One of the nice features about python is that you can select which arguments to set. GratingStim has over 15 arguments that can be set, but the others just take on default values if they aren't needed.
@@ -48,7 +48,7 @@ That's a bit easy though. Let's make the stimulus move, at least! To do that we 
 .. code-block:: python
 
     for frameN in range(200):
-        grating.setPhase(0.05, '+')  # advance phase by 0.05 of a cycle
+        grating.phae += 0.05  # Advance phase by 0.05 of a cycle
         grating.draw()
         fixation.draw()
         mywin.update()
