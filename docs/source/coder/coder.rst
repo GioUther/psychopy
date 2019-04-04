@@ -23,20 +23,20 @@ Basic Concepts
 
 .. toctree::
    :maxdepth: 2
-   :glob: 
-   
+   :glob:
+
    codeStimuli
    codeLogging
    code*
-	
+   globalKeys
+
 .. _tutorials:
 
 PsychoPy Tutorials
 ~~~~~~~~~~~~~~~~~~~~
 
 .. toctree::
-   :maxdepth: 2   
-   :glob: 
-   
+   :maxdepth: 2
+   :glob:
+
    tutor*
-   

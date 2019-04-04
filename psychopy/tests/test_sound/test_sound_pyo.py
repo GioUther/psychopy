@@ -1,26 +1,34 @@
 """Test PsychoPy sound.py using pyo backend
 """
+from __future__ import division
 
-from psychopy import prefs, core
+from builtins import object
+from past.utils import old_div
 
 import pytest
 from scipy.io import wavfile
 import shutil, os
 from tempfile import mkdtemp
-from psychopy import sound, microphone
-origSoundPref = prefs.general['audioLib']
+import numpy as np
 
-import numpy
+from psychopy import prefs, core
+from psychopy import sound, microphone
+from psychopy.tests.utils import TESTS_DATA_PATH
+from psychopy.constants import PY3
+
+if PY3:
+    from importlib import reload
+
+origSoundPref = prefs.hardware['audioLib']
 
 # py.test --cov-report term-missing --cov sound.py tests/test_sound/test_sound_pyo.py
 
-from psychopy.tests.utils import TESTS_PATH, TESTS_DATA_PATH
 
 @pytest.mark.needs_sound
 class TestPyo(object):
     @classmethod
     def setup_class(self):
-        prefs.general['audioLib'] = ['pyo']
+        prefs.hardware['audioLib'] = ['pyo']
         reload(sound)  # to force our new preference to be used
         self.contextName='pyo'
         try:
@@ -42,13 +50,13 @@ class TestPyo(object):
 
     @classmethod
     def teardown_class(self):
-        prefs.general['audioLib'] = origSoundPref
+        prefs.hardware['audioLib'] = origSoundPref
 
         if hasattr(self, 'tmp'):
             shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_init(self):
-        for note in ['A', 440, '440', [1,2,3,4], numpy.array([1,2,3,4])]:
+        for note in ['A', 440, '440', [1,2,3,4], np.array([1,2,3,4])]:
             sound.Sound(note, secs=.1)
         with pytest.raises(ValueError):
             sound.Sound('this is not a file name')
@@ -58,7 +66,7 @@ class TestPyo(object):
             sound.setaudioLib('foo')
 
         points = 100
-        snd = numpy.ones(points) / 20
+        snd = old_div(np.ones(points), 20)
 
         s = sound.Sound(self.testFile)
 

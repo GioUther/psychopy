@@ -1,12 +1,15 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """Functions and classes related to coordinate system conversion
 """
+from __future__ import absolute_import, division, print_function
 
+from past.utils import old_div
 import numpy
 from numpy import radians
 
@@ -16,7 +19,7 @@ def cart2pol(x, y, units='deg'):
 
     :usage:
 
-        theta, radius = pol2cart(x, y, units='deg')
+        theta, radius = cart2pol(x, y, units='deg')
 
     units refers to the units (rad or deg) for theta that should be returned
     """
@@ -66,8 +69,8 @@ def cart2sph(z, y, x):
     elevation = numpy.arctan2(z, numpy.sqrt(x**2 + y**2))
 
     # convert azimuth and elevation angles into degrees
-    azimuth *= (180.0 / numpy.pi)
-    elevation *= (180.0 / numpy.pi)
+    azimuth *= (old_div(180.0, numpy.pi))
+    elevation *= (old_div(180.0, numpy.pi))
 
     sphere = numpy.array([elevation, azimuth, radius])
     sphere = numpy.rollaxis(sphere, 0, 3)

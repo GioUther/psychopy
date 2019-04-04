@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import absolute_import, division, print_function
+
 from psychopy import core, visual
 from psychopy.iohub import launchHubServer, ioHubConnection, EventConstants
 from psychopy.iohub import TimeTrigger, DeviceEventTrigger
@@ -5,7 +10,7 @@ from psychopy.iohub import TargetStim, PositionGrid, ValidationProcedure
 import time
 import numpy as np
 exp_code = 'targetdisplay'
-sess_code = 'S_{0}'.format(long(time.mktime(time.localtime())))
+sess_code = 'S_{0}'.format(int(time.mktime(time.localtime())))
 
 # Start ioHub event monitoring process
 iohub_config = {
@@ -62,7 +67,7 @@ positions = PositionGrid(
 # the first position).
 positions.randomize()
 
-# Specifiy the Triggers to use to move from target point to point during
+# Specify the Triggers to use to move from target point to point during
 # the validation sequence....
 
 # Use DeviceEventTrigger to create a keyboard char event trigger

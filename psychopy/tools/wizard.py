@@ -1,15 +1,18 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """Libraries for wizards, currently firstrun configuration and benchmark.
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 # Author: Jeremy Gray, Oct 2012; localization 2014
 
+from __future__ import absolute_import, division, print_function
+
+from builtins import map, str, range, object
 from pyglet.gl import gl_info
 import os
 import sys
@@ -17,14 +20,15 @@ import wx
 import numpy as np
 import platform
 import codecs
+from pkg_resources import parse_version
 
-if wx.version() < '2.9':
+if parse_version(wx.__version__) < parse_version('2.9'):
     tmpApp = wx.PySimpleApp()
 else:
     tmpApp = wx.App(False)
-from psychopy.app.localization import _translate
+from psychopy.localization import _translate
 from psychopy import (info, data, visual, gui, core, __version__,
-                      prefs, event)
+                      prefs, event, constants)
 
 # set values, using a form that poedit can discover:
 _localized = {
@@ -89,7 +93,7 @@ class BaseWizard(object):
         warn = False
         if freeRAM == 'unknown':
             if totalRAM != 'unknown':
-                totalRAM = "%.1fG" % (totalRAM / 1024.)
+                totalRAM = "%.1fG" % (totalRAM/1024.0)
             txt = _translate(
                 'could not assess available physical RAM; total %s')
             msg = txt % totalRAM
@@ -98,14 +102,14 @@ class BaseWizard(object):
             txt = _translate(
                 'physical RAM available for configuration test '
                 '(of %.1fG total)')
-            msg = txt % (totalRAM / 1024.)
+            msg = txt % (totalRAM/1024.)
             if freeRAM < 300:  # in M
                 txt = _translate(
                     'Warning: low available physical RAM for '
                     'configuration test (of %.1fG total)')
-                msg = txt % (totalRAM / 1024.)
+                msg = txt % (totalRAM/1024.)
                 warn = True
-            report.append(('available memory', unicode(freeRAM) + 'M',
+            report.append(('available memory', str(freeRAM) + 'M',
                            msg, warn))
 
         # ----- PSYCHOPY: -----
@@ -119,13 +123,16 @@ class BaseWizard(object):
             'prefs.html#application-settings-app">Preferences -> App</a>')
         report.append(('locale', items['systemLocale'], msg, False))
         msg = ''
-        if items['pythonVersion'] < '2.5' or items['pythonVersion'] >= '3':
-            msg = _translate('Warning: python 2.6 or 2.7 required; '
-                             '2.5 is not supported but might work')
+        v = parse_version
+        thisV = v(items['pythonVersion'])
+        if (thisV < v('2.7') or (v('3.0') <= thisV < v('3.6'))
+            ):
+            msg = _translate("Warning: python 2.7 or 3.6 are recommended; "
+                             "2.6 and 3.5 might work. Others probably won't.")
             warn = True
         if 'EPD' in items['pythonFullVersion']:
             msg += ' Enthought Python Distribution'
-        elif 'PsychoPy2.app' in items['pythonExecutable']:
+        elif 'PsychoPy3.app' in items['pythonExecutable']:
             msg += ' (PsychoPy StandAlone)'
         bits, linkage = platform.architecture()
         # if not bits.startswith('32'):
@@ -205,7 +212,7 @@ class BaseWizard(object):
         win.recordFrameIntervals = True
         win.frameIntervals = []
         win.flip()
-        for i in xrange(180):
+        for i in range(180):
             dots100.draw()
             win.flip()
         msg = _translate(
@@ -288,7 +295,7 @@ class BaseWizard(object):
         if not self.prefs.connections['proxy'].strip():
             prx = '&nbsp;&nbsp;--'
         else:
-            prx = unicode(self.prefs.connections['proxy'])
+            prx = str(self.prefs.connections['proxy'])
         report.append(('proxy setting', prx,
                        _translate('current manual proxy setting from <a '
                                   'href="http://www.psychopy.org/general/'
@@ -312,32 +319,35 @@ class BaseWizard(object):
             if sys.platform == 'win32':
                 packages.append('pywin32')
                 packages.append('winioport')
+
+            if constants.PY3:
+                pkgError = ModuleNotFoundError
+            else:
+                pkgError = ImportError
             for pkg in packages:
                 try:
                     if pkg == 'PIL':
-                        exec('import PIL.Image')
-                        ver = PIL.Image.VERSION
+                        import PIL
+                        ver = PIL.__version__
                     # elif pkg == 'lxml':
                     #
-                    elif pkg == 'pp':
-                        exec('import pp; ver = pp.version')
                     elif pkg == 'pynetstation':
-                        exec('from psychopy.hardware import egi')
+                        from psychopy.hardware import egi
                         ver = 'import ok'
                     elif pkg == 'pyserial':
-                        exec('import serial')
+                        import serial
                         ver = serial.VERSION
                     elif pkg == 'pywin32':
-                        exec('import win32api')
+                        import win32api
                         ver = 'import ok'
                     else:
                         exec('import ' + pkg)
                         try:
                             ver = eval(pkg + '.__version__')
                         except Exception:
-                            ver = 'import ok'
+                            ver = 'imported but no version info'
                     report.append((pkg, ver, '', False))
-                except (ImportError, AttributeError):
+                except (pkgError, AttributeError):
                     msg = _translate('could not import package %s')
                     report.append((pkg, '&nbsp;&nbsp;--', msg % pkg, False))
 
@@ -362,7 +372,7 @@ class BaseWizard(object):
                       'no dropped frames', 'internet access')
         # ofInterest.append('background processes')
         for item in ofInterest:
-            if not item in config.keys():
+            if not item in config:
                 continue  # eg, microphone latency
             if config[item][2]:  # warn True
                 summary.append(("X   " + _translate(item), red))
@@ -444,7 +454,6 @@ class BaseWizard(object):
                 '''<button onClick="toggle('ok', '');">''' + \
                 _translate('Show all information') + '</button></p>'
             htmlDoc += _translate('''<p>Resources:
-                  Contributed <a href="http://upload.psychopy.org/benchmark/report.html">benchmarks</a>
                 | <a href="http://www.psychopy.org/documentation.html">On-line documentation</a>
                 | Download <a href="http://www.psychopy.org/PsychoPyManual.pdf">PDF manual</a>
                 | <a href="http://groups.google.com/group/psychopy-users">Search the user-group archives</a>
@@ -480,9 +489,8 @@ class BaseWizard(object):
 
     def save(self):
         """Save the html text as a file."""
-        f = codecs.open(self.reportPath, 'wb', 'UTF8')
-        f.write(self.reportText)
-        f.close()
+        with codecs.open(self.reportPath, 'wb', encoding='utf-8-sig') as f:
+            f.write(self.reportText)
 
 class ConfigWizard(BaseWizard):
     """Walk through configuration diagnostics & generate report.
@@ -494,7 +502,7 @@ class ConfigWizard(BaseWizard):
         super(ConfigWizard, self).__init__()
         self.firstrun = firstrun
         self.prefs = prefs
-        self.appName = 'PsychoPy2'
+        self.appName = 'PsychoPy3'
         self.name = self.appName + _translate(' Configuration Wizard')
         self.reportPath = os.path.join(
             self.prefs.paths['userPrefsDir'], 'firstrunReport.html')
@@ -506,7 +514,7 @@ class ConfigWizard(BaseWizard):
         dlg = gui.Dlg(title=self.name)
         dlg.addText('')
         if firstrun:
-            dlg.addText(_translate("Welcome to PsychoPy2!"), color='blue')
+            dlg.addText(_translate("Welcome to PsychoPy3!"), color='blue')
             dlg.addText('')
             dlg.addText(_translate("It looks like you are running PsychoPy "
                                    "for the first time."))
@@ -643,7 +651,7 @@ class BenchmarkWizard(BaseWizard):
         super(BenchmarkWizard, self).__init__()
         self.firstrun = False
         self.prefs = prefs
-        self.appName = 'PsychoPy2'
+        self.appName = 'PsychoPy3'
         self.name = self.appName + _translate(' Benchmark Wizard')
 
         dlg = gui.Dlg(title=self.name)
@@ -667,7 +675,7 @@ class BenchmarkWizard(BaseWizard):
         for k, v, m, w in diagnostics:
             # list of tuples --> dict, ignore msg m, warning w
             info[k] = v
-        fps = 1000. / float(info['visual sync (refresh)'].split()[0])
+        fps = 1000.0/float(info['visual sync (refresh)'].split()[0])
 
         itemsList = [('Benchmark', '', '', False)]
         itemsList.append(('benchmark version', '0.1', _translate(
@@ -753,10 +761,10 @@ class BenchmarkWizard(BaseWizard):
 
         # baseline frames per second:
         if not baseline:
-            for i in xrange(5):
+            for i in range(5):
                 win.flip()  # wake things up
             win.fps()  # reset
-            for i in xrange(60):
+            for i in range(60):
                 win.flip()
             baseline = round(win.fps())
         maxFrame = round(baseline * secs)

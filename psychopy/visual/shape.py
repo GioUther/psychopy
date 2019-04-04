@@ -1,10 +1,16 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-'''Create geometric (vector) shapes by defining vertex locations.'''
+"""Create geometric (vector) shapes by defining vertex locations."""
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL)
+
+from __future__ import absolute_import, print_function
+
+from builtins import str
+from past.builtins import basestring
 
 # Ensure setting pyglet.options['debug_gl'] to False is done prior to any
 # other calls to pyglet or pyglet submodules, otherwise it may not get picked
@@ -22,6 +28,7 @@ from psychopy import logging
 from psychopy.tools.monitorunittools import cm2pix, deg2pix
 from psychopy.tools.attributetools import (attributeSetter, logAttrib,
                                            setAttribute)
+from psychopy.tools.arraytools import val2array
 from psychopy.visual.basevisual import (BaseVisualStim, ColorMixin,
                                         ContainerMixin)
 from psychopy.visual.helpers import setColor
@@ -30,6 +37,27 @@ from psychopy.contrib import tesselate
 import copy
 import numpy
 
+
+knownShapes = {
+    "cross" :  [
+        (-0.1, +0.5), # up
+        (+0.1, +0.5),
+        (+0.1, +0.1),
+        (+0.5, +0.1),  # right
+        (+0.5, -0.1),
+        (+0.1, -0.1),
+        (+0.1, -0.5),  # down
+        (-0.1, -0.5),
+        (-0.1, -0.1),
+        (-0.5, -0.1),  # left
+        (-0.5, +0.1),
+        (-0.1, +0.1),
+    ],
+    "star7" : [(0.0,0.5),(0.09,0.18),(0.39,0.31),(0.19,0.04),
+             (0.49,-0.11),(0.16,-0.12),(0.22,-0.45),(0.0,-0.2),
+             (-0.22,-0.45),(-0.16,-0.12),(-0.49,-0.11),(-0.19,0.04),
+             (-0.39,0.31),(-0.09,0.18)]
+}
 
 class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
     """Create geometric (vector) shapes by defining vertex locations.
@@ -67,7 +95,9 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
                  fillRGB=None,
                  name=None,
                  autoLog=None,
-                 autoDraw=False):
+                 autoDraw=False,
+                 color=None,
+                 colorSpace=None):
         """ """  # all doc is in the attributes
         # what local vars are defined (these are the init params) for use by
         # __repr__
@@ -78,9 +108,6 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
         # later
         super(BaseShapeStim, self).__init__(win, units=units,
                                             name=name, autoLog=False)
-        self.__dict__['setColor'] = None
-        self.__dict__['color'] = None
-        self.__dict__['colorSpace'] = None
 
         self.contrast = float(contrast)
         self.opacity = float(opacity)
@@ -90,23 +117,35 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
         self.interpolate = interpolate
 
         # Color stuff
-        self.useShaders = False  # don't ned to combine textures with colors
+        self.useShaders = False  # don't need to combine textures with colors
+        # set color first but then potentially override
+        self.__dict__['colorSpace'] = colorSpace
         self.__dict__['lineColorSpace'] = lineColorSpace
         self.__dict__['fillColorSpace'] = fillColorSpace
 
-        if lineRGB != None:
+        if lineRGB is not None:
             logging.warning("Use of rgb arguments to stimuli are deprecated."
                             " Please use color and colorSpace args instead")
             self.setLineColor(lineRGB, colorSpace='rgb', log=None)
+        elif color is not None and lineColor is None:
+            pass  # user has set color but not lineColor. Don't override that
         else:
             self.setLineColor(lineColor, colorSpace=lineColorSpace, log=None)
 
-        if fillRGB != None:
+        if fillRGB is not None:
             logging.warning("Use of rgb arguments to stimuli are deprecated."
                             " Please use color and colorSpace args instead")
             self.setFillColor(fillRGB, colorSpace='rgb', log=None)
+        elif color is not None and fillColor is None:
+            pass  # user has set color but not fillColor. Don't override that
         else:
             self.setFillColor(fillColor, colorSpace=fillColorSpace, log=None)
+
+        # if the fillColor and lineColor are not set but color is
+        # then the user probably wants color applied to both
+        if (lineColor==(1.0, 1.0, 1.0) and fillColor is None
+                and color is not None):
+            self.color = color
 
         # Other stuff
         self.depth = depth
@@ -152,6 +191,11 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
         self.__dict__['interpolate'] = value
 
     @attributeSetter
+    def color(self, color):
+        self.fillColor = color
+        self.lineColor = color
+
+    @attributeSetter
     def fillColor(self, color):
         """Sets the color of the shape fill.
 
@@ -186,13 +230,11 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
         """
         self.__dict__['lineColorSpace'] = value
 
-    def setColor(self, color, colorSpace=None, operation=''):
-        """For ShapeStim use :meth:`~ShapeStim.lineColor` or
-        :meth:`~ShapeStim.fillColor`
+    def setColor(self, color, colorSpace=None, operation='', log=None):
+        """Sets both the line and fill to be the same color
         """
-        msg = ('ShapeStim does not support setColor method. '
-               'Please use setFillColor or setLineColor instead')
-        raise AttributeError, msg
+        self.setLineColor(color, colorSpace, operation, log)
+        self.setFillColor(color, colorSpace, operation, log)
 
     def setLineRGB(self, value, operation=''):
         """DEPRECATED since v1.60.05: Please use :meth:`~ShapeStim.lineColor`
@@ -285,6 +327,9 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
             win = self.win
         self._selectWindow(win)
 
+        if win._haveShaders:
+            _prog = self.win._progSignedFrag
+            GL.glUseProgram(_prog)
         # will check if it needs updating (check just once)
         vertsPix = self.verticesPix
         nVerts = vertsPix.shape[0]
@@ -329,6 +374,8 @@ class BaseShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
             else:
                 GL.glDrawArrays(GL.GL_LINE_STRIP, 0, nVerts)
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+        if win._haveShaders:
+            GL.glUseProgram(0)
         if not keepMatrix:
             GL.glPopMatrix()
 
@@ -346,12 +393,15 @@ class ShapeStim(BaseShapeStim):
     whole can be rotated, translated, or scaled dynamically
     (using .ori, .pos, .size).
 
+    Vertices can be a string, giving the name of a known set of vertices,
+    although "cross" is the only named shape available at present.
+
     Advanced shapes: `vertices` can also be a list of loops, where each loop
     is a list of points (x,y), e.g., to define a shape with a hole. Borders
     and contains() are not supported for multi-loop stimuli.
 
     `windingRule` is an advanced feature to allow control over the GLU
-    tesselator winding rule (default: GLU_TESS_WINDING_ODD). This is relevant
+    tessellator winding rule (default: GLU_TESS_WINDING_ODD). This is relevant
     only for self-crossing or multi-loop shapes. Cannot be set dynamically.
 
     See Coder demo > stimuli > shapes.py
@@ -360,6 +410,7 @@ class ShapeStim(BaseShapeStim):
     is almost completely backwards compatible (see changelog). The
     old version is accessible as `psychopy.visual.BaseShapeStim`.
     """
+
     # Author: Jeremy Gray, November 2015, using psychopy.contrib.tesselate
 
     def __init__(self,
@@ -411,7 +462,7 @@ class ShapeStim(BaseShapeStim):
 
         self.closeShape = closeShape
         self.windingRule = windingRule
-        self._initVertices(vertices)
+        self.vertices = vertices
 
         # remove deprecated params (from ShapeStim.__init__):
         self._initParams = self._initParamsOrig
@@ -422,14 +473,14 @@ class ShapeStim(BaseShapeStim):
         if self.autoLog:
             logging.exp("Created %s = %s" % (self.name, str(self)))
 
-    def _initVertices(self, newVertices):
-        """Set the .vertices and .border to new values, invoking tesselation.
+    def _tesselate(self, newVertices):
+        """Set the .vertices and .border to new values, invoking tessellation.
         """
         # TO-DO: handle borders properly for multiloop stim like holes
         # likely requires changes in ContainerMixin to iterate over each
         # border loop
-        self.border = copy.deepcopy(newVertices)
 
+        self.border = copy.deepcopy(newVertices)
         if self.closeShape:
             # convert original vertices to triangles (= tesselation) if
             # possible. (not possible if closeShape is False, don't even try)
@@ -455,7 +506,7 @@ class ShapeStim(BaseShapeStim):
             raise tesselate.TesselateError("Could not properly tesselate")
         else:
             initVertices = tessVertices
-        self.__dict__['vertices'] = numpy.array(initVertices, float)
+        self.__dict__['_tesselVertices'] = numpy.array(initVertices, float)
 
     @attributeSetter
     def vertices(self, newVerts):
@@ -466,13 +517,15 @@ class ShapeStim(BaseShapeStim):
 
         :ref:`Operations <attrib-operations>` supported with `.setVertices()`.
         """
-        self._initVertices(newVerts)
+        # check if this is a name of one of our known shapes
+        if isinstance(newVerts, basestring) and newVerts in knownShapes:
+            newVerts = knownShapes[newVerts]
 
         # Check shape
-        vsh = self.vertices.shape
-        if not (vsh == (2,) or (len(vsh) == 2 and vsh[1] == 2)):
-            raise ValueError("New value for setXYs should be 2x1 or Nx2")
+        self.__dict__['vertices'] = val2array(newVerts, withNone=True,
+                                              withScalar=True, length=2)
         self._needVertexUpdate = True
+        self._tesselate(self.vertices)
 
     @property
     def verticesPix(self):
@@ -503,6 +556,12 @@ class ShapeStim(BaseShapeStim):
         if not keepMatrix:
             GL.glPushMatrix()
             win.setScale('pix')
+
+        # setup the shaderprogram
+        if win._haveShaders:
+            _prog = self.win._progSignedFrag
+            GL.glUseProgram(_prog)
+
         # load Null textures into multitexteureARB - or they modulate glColor
         GL.glActiveTexture(GL.GL_TEXTURE0)
         GL.glEnable(GL.GL_TEXTURE_2D)
@@ -543,5 +602,7 @@ class ShapeStim(BaseShapeStim):
             GL.glDrawArrays(gl_line, 0, self._borderPix.shape[0])
 
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+        if win._haveShaders:
+            GL.glUseProgram(0)
         if not keepMatrix:
             GL.glPopMatrix()

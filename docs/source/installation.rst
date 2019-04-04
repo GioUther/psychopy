@@ -1,40 +1,55 @@
 Installation
 ===============
 
+.. raw:: html
+
+   <script>
+    let name;
+    let url;
+    let version='3.0.7'
+    if (navigator.platform === 'Win32') {
+      name = '  Standalone PsychoPy '+version+' for 64bit Windows';
+      url = 'https://github.com/psychopy/psychopy/releases/download/'+version+'/StandalonePsychoPy3-'+version+'-win64.exe';
+    }
+    else if (navigator.platform === 'MacIntel') {
+      name = '  Standalone PsychoPy '+version+' for MacOS';
+      url = 'https://github.com/psychopy/psychopy/releases/download/'+version+'/StandalonePsychoPy3-'+version+'-MacOS.dmg';
+    }
+    if (navigator.platform === 'Win32' || navigator.platform === 'MacIntel') {
+      document.write( "For your detected platform ("+navigator.platform+") we recommend");
+      document.write( "<button class='btn' onclick='window.location.href=url'><i class='fa fa-download'></i>" + name + "</button>" );
+    }
+   </script>
+
+
 
 Download
 ~~~~~~~~~~~~~~~~~~~~~~
 
 For the easiest installation download and install the Standalone package for your system:
 
+For the **latest stable release** (the version we recommend you install):
 
-  * Windows (all versions):
+* `PsychoPy 3.0.5 <https://github.com/psychopy/psychopy/releases>`_
+* Ubuntu or debian-based systems:
 
-    * `Download StandalonePsychoPy-1.84.2-win32.exe <https://github.com/psychopy/psychopy/releases/download/1.84.2/StandalonePsychoPy-1.84.2-win32.exe>`_
-
-  * Mac OSX (recent versions):
-
-    * `Download StandalonePsychoPy-1.84.2-OSX_64bit.dmg <https://github.com/psychopy/psychopy/releases/download/1.84.2/StandalonePsychoPy-1.84.2-OSX_64bit.dmg>`_
-
-  * Ubuntu or debian-based systems:
-
-    * `sudo apt-get install psychopy`
-    * NB: the neurodebian package has newer versions than the default debian package: http://neuro.debian.net/
+  * `sudo apt-get install psychopy`
+  * NB: the neurodebian package has newer versions than the default debian package: http://neuro.debian.net/
 
 **For previous recent versions** see the `PsychoPy releases on github <https://github.com/psychopy/psychopy/releases>`_
 
-See below for options:
+See below for options if you don't want to use the Standalone releases:
 
-  * :ref:`manual_install`
-  * :ref:`conda`
-  * :ref:`neurodebian`
-  * :ref:`macports_install`
-  * :ref:`gentoo`
+* :ref:`manual_install`
+* :ref:`conda`
+* :ref:`neurodebian`
+* :ref:`macports_install`
+* :ref:`gentoo`
 
 Notes on OpenGL drivers
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-On windows, if you get an error saying **"pyglet.gl.ContextException: Unable to share contexts"** then the most likely cause is that you need OpenGL drivers and your built-in Windows only have limited support for OpenGL (or possibly you have an Intel graphics card that isn't very good). Try installing new drivers for your graphics card **from the manufacturer web page** not from Microsoft.
+On Windows, if you get an error saying **"pyglet.gl.ContextException: Unable to share contexts"** then the most likely cause is that you need OpenGL drivers and your built-in Windows only has limited support for OpenGL (or possibly you have an Intel graphics card that isn't very good). Try installing new drivers for your graphics card **from its manufacturer's web page,** not from Microsoft. For example NVIDIA provides drivers for its cards here: https://www.nvidia.com/Download/index.aspx
 
 .. _hardware:
 
@@ -45,7 +60,7 @@ The minimum requirement for PsychoPy is a computer with a graphics card that sup
 
 If you already have a computer, you can install PsychoPy and the Configuration Wizard will auto-detect the card and drivers, and provide more information. It is inexpensive to upgrade most desktop computers to an adequate graphics card. High-end graphics cards can be very expensive but are only needed for very intensive use.
 
-Generally nVidia and ATI (AMD) graphics chips are high-performance than Intel graphics chips so try and get one of those instead. Some graphics cards that are known to work with PsychoPy `can be found here <http://upload.psychopy.org/benchmark/report.html>`_; that list is not exhaustive, many cards will also work.
+Generally NVIDIA and ATI (AMD) graphics chips have higher performance than Intel graphics chips so try and get one of those instead. Some graphics cards that are known to work with PsychoPy `can be found here <http://upload.psychopy.org/benchmark/report.html>`_; that list is not exhaustive, many other cards will also work.
 
 
 .. _manual_install:
@@ -60,13 +75,13 @@ Now that most python libraries can be install using `pip` it's relatively easy t
 Dependencies
 ~~~~~~~~~~~~~~~~~~~~~~
 
-You need a copy of Python 2.7.x from here, wxPython and probably pyo (or use an alternative audio library listed below). None of these support `pip install` yet so you need to download them:
-  * Python itself: http://www.python.org/download/ (**version 3.x is not supported yet** )
+You need a copy of Python itself, and wxPython and probably pyo (or use an alternative audio library listed below). None of these support `pip install` yet so you need to download them:
+  * Python itself: http://www.python.org/download/ (**version 3.6 is preferred, although 2.7 also remains supported for the time being** )
   * wxPython: https://wxpython.org/download.php
   * pyo audio: http://ajaxsoundstudio.com/software/pyo/
   * PyQt4 or PyQt5 are handy but not required and need manual installation
 
-Then, if you want **everything** available you could paste this in to your terminal/commandline and go and get a coffee (will take maybe 20mins to download and install everything?)::
+Then, if you want **everything** available you could paste this in to your terminal/command line and go and get a coffee. This could take upwards of 20 minutes to download and install everything::
 
   pip install numpy scipy matplotlib pandas pyopengl pyglet pillow moviepy lxml openpyxl xlrd configobj pyyaml gevent greenlet msgpack-python psutil tables requests[security] pyosf cffi pysoundcard pysoundfile seaborn psychopy_ext python-bidi psychopy
   pip install pyserial pyparallel egi iolabs
@@ -76,9 +91,9 @@ Needed on Windows::
 
   pip install pypiwin32
 
-Needed on Mac OS X::
+Needed on macOS::
 
-  pip install pyobjc # takes a while!
+  pip install pyobjc-core pyobjc-framework-Quartz
 
 
 OR you could just install the subsets of packages that you want::
@@ -97,7 +112,7 @@ OR you could just install the subsets of packages that you want::
   pip install requests[security] pyosf
 
   # alternative audio (easier than pyo to install)
-  pip install cffi pysoundcard pysoundfile
+  pip install cffi sounddevice pysoundfile
 
 Handy extra options::
 
@@ -124,14 +139,21 @@ For developers::
 Anaconda and Miniconda
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The following should allow you to get PsychoPy working using Ana/MiniConda:
+The following should allow you to get PsychoPy working using Ana/MiniConda with Python 2.7::
 
-  conda config --add channels https://conda.binstar.org/erik
-  conda install -c erik psychopy
-  conda create -n psychopyenv psychopy
-  source activate psychopyenv
+  conda create -n psypy python=2.7
+  conda activate psypy
+  conda install numpy scipy matplotlib pandas pyopengl pillow lxml openpyxl xlrd configobj pyyaml gevent greenlet msgpack-python psutil pytables requests[security] cffi seaborn wxpython cython future pyzmq pyserial
+  conda install -c conda-forge pyglet pysoundfile python-bidi moviepy pyosf
+  pip install zmq json-tricks pyparallel sounddevice pygame pysoundcard psychopy_ext psychopy
 
-but the recipe may be out of date and `pygame` was not available in the past (now?)
+and with Python 3.5 (recommended)::
+
+  conda create -n psypy3 python=3.5
+  conda activate psypy3
+  conda install numpy scipy matplotlib pandas pyopengl pillow lxml openpyxl xlrd configobj pyyaml gevent greenlet msgpack-python psutil pytables requests[security] cffi seaborn wxpython cython pyzmq pyserial
+  conda install -c conda-forge pyglet pysoundfile python-bidi moviepy pyosf
+  pip install zmq json-tricks pyparallel sounddevice pygame pysoundcard psychopy_ext psychopy
 
 .. _macports_install:
 
@@ -170,3 +192,25 @@ After you have `enabled the overlay <http://wiki.gentoo.org/wiki/Overlay>`_ simp
 
 
 .. _download : https://github.com/psychopy/psychopy/releases
+
+Developers
+~~~~~~~~~~~~~~~~~~~~~~
+
+Ensure you have Python 3.6 and the latest version of pip installed::
+
+  python --version
+  pip --version
+
+Next, follow instructions :ref:`here <usingRepos>` to fork and fetch the latest version of the PsychoPy repository.
+
+From the directory where you cloned the latest PsychoPy repository (i.e., where setup.py resides), run::
+
+  pip install -e .
+
+This will install all PsychoPy dependencies to your default Python distribution (which should be Python 3.6). Next, you should create a new PsychoPy shortcut linking your newly installed dependencies to your current version of PsychoPy in the cloned repository. To do this, simply create a new .BAT file containing::
+
+"C:\PATH_TO_PYTHON3.6\python.exe C:\PATH_TO_CLONED_PSYCHOPY_REPO\psychopy\app\psychopyApp.py"
+
+Alternatively, you can run the psychopyApp.py from the command line::
+
+  python C:\PATH_TO_CLONED_PSYCHOPY_REPO\psychopy\app\psychopyApp

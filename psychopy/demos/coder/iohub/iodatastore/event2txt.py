@@ -1,4 +1,6 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 This script demonstrates how to load a ioHub DataStore HDF5 file, read the
 session variable data collected via the Experiment Session Variable Dialog
@@ -8,6 +10,10 @@ tab delimited file.
 
 @author: Sol
 """
+
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
 import sys,os
 import psychopy
 from psychopy.core import getTime
@@ -73,7 +79,7 @@ if __name__ == '__main__':
     # Select which event table to output by displaying a list of
     #   Event Class Names that have data available to the user...
     event_class_selection=displayEventTableSelectionDialog("Select Event Type to Save", "Event Type:",
-                [eventTableMappings[event_id].class_name for event_id in events_with_data.keys()])
+                [eventTableMappings[event_id].class_name for event_id in list(events_with_data.keys())])
     if event_class_selection is None:
         print("Event table Selection Cancelled, exiting...")
         dataAccessUtil.close()
@@ -86,7 +92,7 @@ if __name__ == '__main__':
     # Lookup the correct event iterator fiven the event class name selected.
     #
     event_iterator_for_output=None
-    for event_id, mapping_info in eventTableMappings.iteritems():
+    for event_id, mapping_info in eventTableMappings.items():
         if mapping_info.class_name==event_class_selection:
             event_iterator_for_output=events_with_data[event_id]
             break
@@ -106,7 +112,7 @@ if __name__ == '__main__':
         for s in session_metadata:
            sesion_meta_data_dict[s.session_id]=s
 
-    # Open a file to save the tab delimited ouput to.
+    # Open a file to save the tab delimited output to.
     #
     log_file_name="%s.%s.txt"%(dfile[:-5],event_class_selection)
     with open(log_file_name,'w') as output_file:

@@ -1,12 +1,17 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 Created on Sat May 25 00:09:01 2013
 
 @author: Sol
 """
-from __future__ import print_function  # for compatibility with python3
+from __future__ import absolute_import, print_function
+
+from builtins import range
+from builtins import object
 from textwrap import TextWrapper
-import codecs
+import io
 import os
 from collections import deque
 from weakref import proxy
@@ -16,9 +21,8 @@ class ParsedTextDocument(object):
 
     def __init__(self, text_data, text_grid):
         if os.path.isfile(text_data):
-            tfile = codecs.open(text_data, 'rU', 'utf-8')
-            text_data = tfile.read()
-            tfile.close()
+            with io.open(text_data, 'r', encoding='utf-8-sig') as f:
+                text_data = f.read()
 
         self._text_grid = proxy(text_grid)
         self._num_columns, self._max_visible_rows = text_grid._shape
@@ -263,7 +267,7 @@ class ParsedTextLine(object):
         if ParsedTextLine.charcodes_with_glyphs is None:
             active_text_style = self._parent._text_grid._text_box._current_glfont
             if active_text_style:
-                ParsedTextLine.charcodes_with_glyphs = active_text_style.charcode2unichr.keys()
+                ParsedTextLine.charcodes_with_glyphs = list(active_text_style.charcode2unichr.keys())
 
         ok_charcodes = ParsedTextLine.charcodes_with_glyphs
 

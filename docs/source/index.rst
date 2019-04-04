@@ -1,7 +1,7 @@
 
 PsychoPy is an open-source application allowing you run a wide range of neuroscience, psychology and psychophysics experiments. It's a free, powerful alternative to Presentation |TM| or e-Prime |TM|, written in Python (a free alternative to Matlab |TM| ).
 
-PsychoPy is unique in giving you a choice of interface: use the **Builder interface** to build rich, flexible experiments easily or use the **Coder interface** to write extremely powerful experiments in the widely-used Python programming language. The best of both worlds!
+PsychoPy provides a unique choice of interface: use the **Builder interface** to build rich, flexible experiments easily or use the **Coder interface** to write extremely powerful experiments in the widely-used Python programming language. The best of both worlds!
 
 .. raw:: html
 
@@ -12,30 +12,51 @@ PsychoPy is unique in giving you a choice of interface: use the **Builder interf
 News
 ====================
 
-**Workshops**: This year we'll be running **three** :ref:`officialWorkshops` :
- - 26-28 Apr 2017: :ref:`PEP1` to get skills in programming, rather than running experiments *per se*
+**New PsychoPy paper**: Please cite this if you use PsychoPy Builder in your studies
 
- - 3-5 May 2017: :ref:`BEP` to get up and running fast with building flexible experiments **including a session on running ONLINE PsychoPy studies**
+Peirce, J. W., Gray, J. R., Simpson, S., MacAskill, M. R., Höchenberger, R., Sogo, H., Kastman, E., Lindeløv, J. (2019). `PsychoPy2: experiments in behavior made easy. <https://dx.doi.org/10.3758/s13428-018-01193-y>`_ Behavior Research Methods. 10.3758/s13428-018-01193-y
 
- - (Date TBC): :ref:`PEP2`
+**Latest version**: 3.0.6 March 2019
 
-**Latest version**: 1.84.2 was released Sept 2016, with new *Projects* menu for syncing with http://osf.io. Also various bug fixes and updated standalone packages. See the full :doc:`changelog`
+Supporting online studies and announcing our own experiment server at `Pavlovia.org <https://pavlovia.org>`_ See the launch video at https://www.youtube.com/watch?v=bprYeBzkUc8 to get more info.
 
-**We've got a new forum**: To discuss anything PsychoPy (features, bugs, tips or
-announcements) go to the new `PsychoPy forum <http://discourse.psychopy.org>`_ Many thanks to the good people at `Discourse.org <http://www.discourse.org>`_ for creating such lovely software and hosting it for us!
+
+**3-day workshop on Python Programming at Nottingham in Apr/May 2019**
+
+Come and join us for 3 days of pure programming bliss. For further details and bookings see the :ref:`officialWorkshops` page
+
+
+**Buy the official book!**
+
+You can now :red:`buy the book`, `Building Experiments in PsychoPy <https://uk.sagepub.com/en-gb/eur/building-experiments-in-psychopy/book253480#reviews>`_ from Sage Publishing!
+
+300 pages of great advice on how to create better experiments with a combination of Builder and some code snippets! Suitable for a wide range of audiences, with separate sections for:
+
+- beginners (suitable for undergraduate teaching)
+- professionals (more technical detail for the afficionado)
+- and specialists (with particular use cases like EEG, fMRI, psychophysics).
+
+See the full :doc:`changelog`
+
 
 .. title:: Home
 
 Contents
 ====================
+
 .. toctree::
    :maxdepth: 1
 
-   About PsychoPy (features, screenshots etc.) <about/index>
-   * Documentation * <documentation>
+   All docs <documentation>
+   About <about/index>
+   gettingStarted
+   builder/builder
+   coder/coder
    api/api
    changelog
    resources/resources
+   developers/developers
+   troubleshooting
 
 Please remember to :ref:`cite PsychoPy <citingPsychoPy>`
 

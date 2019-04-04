@@ -1,4 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """
 A stimulus class for playing movies (mp4, divx, avi etc...) in PsychoPy.
 Demo using the experimental movie3 stim to play a video file. Path of video
@@ -23,17 +25,21 @@ movie is long then audio will be huge and currently the whole thing gets
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
-#
+
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
 reportNDroppedFrames = 10
 
 import os
 
-from psychopy import logging
+from psychopy import logging, prefs #adding prefs to be able to check sound lib -JK
 from psychopy.tools.arraytools import val2array
 from psychopy.tools.attributetools import logAttrib, setAttribute
-from psychopy.visual.basevisual import BaseVisualStim, ContainerMixin
+from psychopy.tools.filetools import pathToString
+from psychopy.visual.basevisual import BaseVisualStim, ContainerMixin, TextureMixin
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
@@ -45,7 +51,7 @@ from psychopy.constants import FINISHED, NOT_STARTED, PAUSED, PLAYING, STOPPED
 import pyglet.gl as GL
 
 
-class MovieStim3(BaseVisualStim, ContainerMixin):
+class MovieStim3(BaseVisualStim, ContainerMixin, TextureMixin):
     """A stimulus class for playing movies (mpeg, avi, etc...) in PsychoPy
     that does not require avbin. Instead it requires the cv2 python package
     for OpenCV. The VLC media player also needs to be installed on the
@@ -106,8 +112,8 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
             logging.warning("FrameRate could not be supplied by psychopy; "
                             "defaulting to 60.0")
             retraceRate = 60.0
-        self._retraceInterval = 1.0 / retraceRate
-        self.filename = filename
+        self._retraceInterval = 1.0/retraceRate
+        self.filename = pathToString(filename)
         self.loop = loop
         self.flipVert = flipVert
         self.flipHoriz = flipHoriz
@@ -168,6 +174,7 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         After the file is loaded MovieStim.duration is updated with the movie
         duration (in seconds).
         """
+        filename = pathToString(filename)
         self.reset()  # set status and timestamps etc
 
         # Create Video Stream stuff
@@ -197,7 +204,7 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
             # size, duration, fps
         # mov.audio has attributes
             # duration, fps (aka sampleRate), to_soundarray()
-        self._frameInterval = 1.0 / self._mov.fps
+        self._frameInterval = 1.0/self._mov.fps
         self.duration = self._mov.duration
         self.filename = filename
         self._updateFrameTexture()
@@ -207,15 +214,17 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         """Continue a paused movie from current position.
         """
         status = self.status
-        if self._audioStream is not None:
-            self._audioStream.play()
         if status != PLAYING:
-            self.status = PLAYING
-            self._videoClock.reset(-self.getCurrentFrameTime())
-
+            self.status = PLAYING #moved this to get better audio behavior - JK
+            #Added extra check to prevent audio doubling - JK
+            if self._audioStream is not None and self._audioStream.status is not PLAYING: 
+                self._audioStream.play()
             if status == PAUSED:
-                self._audioSeek(self.getCurrentFrameTime())
-
+                if self.getCurrentFrameTime() < 0: #Check for valid timestamp, correct if needed -JK
+                    self._audioSeek(0)
+                else:
+                    self._audioSeek(self.getCurrentFrameTime())
+            self._videoClock.reset(-self.getCurrentFrameTime())
             if log and self.autoLog:
                 self.win.logOnFlip("Set %s playing" % (self.name),
                                    level=logging.EXP, obj=self)
@@ -229,7 +238,10 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         if self.status == PLAYING:
             self.status = PAUSED
             if self._audioStream:
-                self._audioStream.stop()
+                if prefs.hardware['audioLib'] == ['sounddevice']:
+                    self._audioStream.pause() #sounddevice has a "pause" function -JK
+                else:
+                    self._audioStream.stop()
             if log and self.autoLog:
                 self.win.logOnFlip("Set %s paused" %
                                    (self.name), level=logging.EXP, obj=self)
@@ -246,12 +258,13 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         the movie.
         """
         if self.status != STOPPED:
-            self.status = STOPPED
             self._unload()
             self.reset()
+            self.status = STOPPED # set status to STOPPED after _unload
             if log and self.autoLog:
                 self.win.logOnFlip("Set %s stopped" % (self.name),
                                    level=logging.EXP, obj=self)
+
 
     def setVolume(self, volume):
         pass  # to do
@@ -287,22 +300,29 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         return self._nextFrameT - self._frameInterval
 
     def _updateFrameTexture(self):
-        if self._nextFrameT is None:
-            # movie has no current position, need to reset the clock
-            # to zero in order to have the timing logic work
-            # otherwise the video stream would skip frames until the
-            # time since creating the movie object has passed
+        if self._nextFrameT is None or self._nextFrameT < 0:
+            # movie has no current position (or invalid position -JK), 
+            # need to reset the clock to zero in order to have the 
+            # timing logic work otherwise the video stream would skip 
+            # frames until the time since creating the movie object has passed
             self._videoClock.reset()
-            self._nextFrameT = 0
+            self._nextFrameT = 0.0
 
         # only advance if next frame (half of next retrace rate)
         if self._nextFrameT > self.duration:
             self._onEos()
         elif self._numpyFrame is not None:
             if self._nextFrameT > (self._videoClock.getTime() -
-                                   self._retraceInterval / 2.0):
+                                   self._retraceInterval/2.0):
                 return None
-        self._numpyFrame = self._mov.get_frame(self._nextFrameT)
+        try:
+            self._numpyFrame = self._mov.get_frame(self._nextFrameT) 
+        except OSError:
+            if self.autoLog:
+                logging.warning("Frame {} not found, moving one frame and trying again" 
+                    .format(self._nextFrameT), obj=self)
+            self._nextFrameT += self._frameInterval
+            self._updateFrameTexture()
         useSubTex = self.useTexSubImage2D
         if self._texID is None:
             self._texID = GL.GLuint()
@@ -357,7 +377,7 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         GL.glTexEnvi(GL.GL_TEXTURE_ENV, GL.GL_TEXTURE_ENV_MODE,
                      GL.GL_MODULATE)  # ?? do we need this - think not!
 
-        if not self.status == PAUSED:
+        if self.status == PLAYING:
             self._nextFrameT += self._frameInterval
 
     def draw(self, win=None):
@@ -414,7 +434,6 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
         GL.glInterleavedArrays(GL.GL_T2F_V3F, 0, array)
         GL.glDrawArrays(GL.GL_QUADS, 0, 4)
         GL.glPopClientAttrib()
-        GL.glPopAttrib()
         GL.glPopMatrix()
         # unbind the textures
         GL.glActiveTexture(GL.GL_TEXTURE0)
@@ -431,28 +450,33 @@ class MovieStim3(BaseVisualStim, ContainerMixin):
 
     def _audioSeek(self, t):
         sound = self.sound
-        # for sound we need to extract the array again and just begin at new
-        # loc
         if self._audioStream is None:
             return  # do nothing
-        self._audioStream.stop()
-        sndArray = self._mov.audio.to_soundarray()
-        startIndex = int(t * self._mov.audio.fps)
-        self._audioStream = sound.Sound(
-            sndArray[startIndex:, :], sampleRate=self._mov.audio.fps)
-        self._audioStream.play()
+        #check if sounddevice  is being used. If so we can use seek. If not we have to 
+        #reload the audio stream and begin at the new loc
+        if prefs.hardware['audioLib'] == ['sounddevice']:
+            self._audioStream.seek(t)
+        else:
+            self._audioStream.stop()
+            sndArray = self._mov.audio.to_soundarray()
+            startIndex = int(t * self._mov.audio.fps)
+            self._audioStream = sound.Sound(
+                sndArray[startIndex:, :], sampleRate=self._mov.audio.fps)
+            if self.status != PAUSED: #Allows for seeking while paused - JK
+                self._audioStream.play()
 
     def _getAudioStreamTime(self):
         return self._audio_stream_clock.getTime()
 
     def _unload(self):
-        try:
-            # remove textures from graphics card to prevent crash
-            self.clearTextures()
-        except Exception:
-            pass
+        # remove textures from graphics card to prevent crash
+        self.clearTextures()
+        if self._mov is not None:
+            self._mov.close()
         self._mov = None
         self._numpyFrame = None
+        if self._audioStream is not None:
+            self._audioStream.stop()
         self._audioStream = None
         self.status = FINISHED
 

@@ -1,12 +1,15 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """This provides a basic ButtonBox class, and imports the
    `ioLab python library <http://github.com/ioLab/python-ioLabs>`_.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
 try:
     from labjack import u3

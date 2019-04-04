@@ -15,7 +15,7 @@ show start-up tips (showStartupTips):
     Display tips when starting PsychoPy.
 
 large icons (largeIcons):
-    Do you want large icons (on some versions of wx on OS X this has no effect)?
+    Do you want large icons (on some versions of wx on macOS this has no effect)?
 
 default view (defaultView):
     Determines which view(s) open when the PsychoPy app starts up. Default is ‘last’, which fetches the same views as were open when PsychoPy last closed.
@@ -85,7 +85,7 @@ output font size (outputFontSize):
     An integer between 6 and 24 that specifies the font size for output display in points.
 
 show source asst (showSourceAsst):
-    Do you want to show the source assistant panel (to the right of the Coder view)? On Windows this provides help about the current function if it can be found. On OS X the source assistant is of limited use and is disabled by default.
+    Do you want to show the source assistant panel (to the right of the Coder view)? On Windows this provides help about the current function if it can be found. On macOS the source assistant is of limited use and is disabled by default.
 
 show output (showOutput):
     Show the output panel in the Coder view. If shown all python output from the session will be output to this panel. Otherwise it will be directed to the original location (typically the terminal window that called PsychoPy application to open).
@@ -105,7 +105,7 @@ newline convention (newlineConvention):
 General settings (General)
 --------------------------
 window type (winType):
-    PsychoPy can use one of two 'backends' for creating windows and drawing; pygame and pyglet. Here you can set the default backend to be used.
+    PsychoPy can use one of two 'backends' for creating windows and drawing; pygame, pyglet and glfw. Here you can set the default backend to be used.
     
 units (units):
     Default units for windows and visual stimuli ('deg', 'norm', 'cm', 'pix'). See :ref:`units`.  Can be overridden by individual experiments.

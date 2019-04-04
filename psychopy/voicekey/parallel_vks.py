@@ -1,11 +1,12 @@
-#!/usr/bin/env python2
-# encoding: utf-8
-
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """Completely untested. Doesn't work at all on Mac (no parallel).
 """
 
+from __future__ import absolute_import, print_function
 
+from builtins import hex
 from . signal import _BaseVoiceKeySignal
 from . vk_tools import get_time, sleep
 

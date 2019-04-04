@@ -1,14 +1,19 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 '''Class of text stimuli to be displayed in a :class:`~psychopy.visual.Window`
 '''
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
 import os
 import glob
+import warnings
 
 # Ensure setting pyglet.options['debug_gl'] to False is done prior to any
 # other calls to pyglet or pyglet submodules, otherwise it may not get picked
@@ -27,7 +32,18 @@ import psychopy.event
 # (JWP has no idea why!)
 from psychopy.tools.monitorunittools import cm2pix, deg2pix, convertToPix
 from psychopy.tools.attributetools import attributeSetter, setAttribute
-from psychopy.visual.basevisual import BaseVisualStim, ColorMixin
+from psychopy.visual.basevisual import (BaseVisualStim, ColorMixin,
+    ContainerMixin)
+
+# for displaying right-to-left (possibly bidirectional) text correctly:
+from bidi import algorithm as bidi_algorithm # sufficient for Hebrew
+# extra step needed to reshape Arabic/Farsi characters depending on
+# their neighbours:
+try:
+    import arabic_reshaper
+    haveArabic = True
+except ImportError:
+    haveArabic = False
 
 import numpy
 
@@ -57,7 +73,7 @@ defaultWrapWidth = {'cm': 15.0,
                     'pixels': 500}
 
 
-class TextStim(BaseVisualStim, ColorMixin):
+class TextStim(BaseVisualStim, ColorMixin, ContainerMixin):
     """Class of text stimuli to be displayed in a
     :class:`~psychopy.visual.Window`
     """
@@ -84,6 +100,7 @@ class TextStim(BaseVisualStim, ColorMixin):
                  wrapWidth=None,
                  flipHoriz=False,
                  flipVert=False,
+                 languageStyle='LTR',
                  name=None,
                  autoLog=None):
         """
@@ -99,6 +116,29 @@ class TextStim(BaseVisualStim, ColorMixin):
         In general, other attributes which merely affect the presentation of
         unchanged shapes are as fast as usual. This includes ``pos``,
         ``opacity`` etc.
+
+        The following attribute can only be set at initialization (see
+        further down for a list of attributes which can be changed after
+        initialization):
+
+        **languageStyle**
+            Apply settings to correctly display content from some languages
+            that are written right-to-left. Currently there are three (case-
+            insensitive) values for this parameter:
+            ``'LTR'`` is the default, for typical left-to-right, Latin-style
+            languages.
+            ``'RTL'`` will correctly display text in right-to-left languages
+             such as Hebrew. By applying the bidirectional algorithm, it
+             allows mixing portions of left-to-right content (such as numbers
+             or Latin script) within the string.
+            ``'Arabic'`` applies the bidirectional algorithm but additionally
+            will _reshape_ Arabic characters so they appear in the cursive,
+            linked form that depends on neighbouring characters, rather than
+            in their isolated form. May also be applied in other scripts,
+            such as Farsi or Urdu, that use Arabic-style alphabets.
+
+        :Parameters:
+
         """
 
         # what local vars are defined (these are the init params) for use by
@@ -106,9 +146,20 @@ class TextStim(BaseVisualStim, ColorMixin):
         self._initParams = dir()
         self._initParams.remove('self')
 
+        """
+        October 2018:
+            In place to remove the deprecation warning for pyglet.font.Text.
+            Temporary fix until pyglet.text.Label use is identical to pyglet.font.Text.
+        """
+        warnings.filterwarnings(message='.*text.Label*', action='ignore')
+
         super(TextStim, self).__init__(
             win, units=units, name=name, autoLog=False)
 
+        if win.blendMode=='add':
+            logging.warning("Pyglet text does not honor the Window setting "
+                            "`blendMode='add'` so 'avg' will be used for the "
+                            "text (but objects drawn after can be added)")
         self._needUpdate = True
         self._needVertexUpdate = True
         # use shaders if available by default, this is a good thing
@@ -125,13 +176,14 @@ class TextStim(BaseVisualStim, ColorMixin):
         self.__dict__['ori'] = ori
         self.__dict__['flipHoriz'] = flipHoriz
         self.__dict__['flipVert'] = flipVert
+        self.__dict__['languageStyle'] = languageStyle
         self._pygletTextObj = None
         self.__dict__['pos'] = numpy.array(pos, float)
 
         # generate the texture and list holders
         self._listID = GL.glGenLists(1)
         # pygame text needs a surface to render to:
-        if not self.win.winType == "pyglet":
+        if not self.win.winType in ["pyglet", "glfw"]:
             self._texID = GL.GLuint()
             GL.glGenTextures(1, ctypes.byref(self._texID))
 
@@ -183,7 +235,7 @@ class TextStim(BaseVisualStim, ColorMixin):
             else:
                 msg = ("TextStim does now know a default letter height "
                        "for units %s")
-                raise AttributeError, msg % repr(self.units)
+                raise AttributeError(msg % repr(self.units))
         self.__dict__['height'] = height
         self._heightPix = convertToPix(pos=numpy.array([0, 0]),
                                        vertices=numpy.array([0, self.height]),
@@ -203,7 +255,7 @@ class TextStim(BaseVisualStim, ColorMixin):
         be a string specifying the name of the font (in system resources).
         """
         self.__dict__['font'] = None  # until we find one
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             self._font = pyglet.font.load(font, int(self._heightPix),
                                           dpi=72, italic=self.italic,
                                           bold=self.bold)
@@ -265,13 +317,30 @@ class TextStim(BaseVisualStim, ColorMixin):
         """The text to be rendered. Use \\\\n to make new lines.
 
         Issues: May be slow, and pyglet has a memory leak when setting text.
-        For these reasons, check and only update the text if it has changed.
-        So scripts can safely set the text on every frame, no need to check.
+        For these reasons, this function checks so that it only updates the
+        text if it has changed. So scripts can safely set the text on every
+        frame, with no need to check if it has actually altered.
         """
-        if text == self.text:
+        if text == self.text: # only update for a change
             return
-        if text != None:  # make sure we have unicode object to render
-            self.__dict__['text'] = unicode(text)
+        if text is not None:
+            text = str(text)  # make sure we have unicode object to render
+
+            # deal with some international text issues. Only relevant for Python:
+            # online experiments use web technologies and handle this seamlessly.
+            style = self.languageStyle.lower()  # be flexible with case
+            if style == 'arabic' and haveArabic:
+                # reshape Arabic characters from their isolated form so that
+                # they flow and join correctly to their neighbours:
+                text = arabic_reshaper.reshape(text)
+            if style == 'rtl' or style == 'arabic' and haveArabic:
+                # deal with right-to-left text presentation by applying the
+                # bidirectional algorithm:
+                text = bidi_algorithm.get_display(text)
+            # no action needed for default 'ltr' (left-to-right) option
+
+            self.__dict__['text'] = text
+
         if self.useShaders:
             self._setTextShaders(text)
         else:
@@ -287,7 +356,7 @@ class TextStim(BaseVisualStim, ColorMixin):
     def _setTextShaders(self, value=None):
         """Set the text to be rendered using the current font
         """
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             self._pygletTextObj = pyglet.font.Text(
                 self._font, self.text,
                 halign=self.alignHoriz, valign=self.alignVert,
@@ -350,8 +419,8 @@ class TextStim(BaseVisualStim, ColorMixin):
 
         # coords:
         if self.alignHoriz in ['center', 'centre']:
-            left = -self.width / 2.0
-            right = self.width / 2.0
+            left = -self.width/2.0
+            right = self.width/2.0
         elif self.alignHoriz == 'right':
             left = -self.width
             right = 0.0
@@ -360,8 +429,8 @@ class TextStim(BaseVisualStim, ColorMixin):
             right = self.width
         # how much to move bottom
         if self.alignVert in ['center', 'centre']:
-            bottom = -self._fontHeightPix / 2.0
-            top = self._fontHeightPix / 2.0
+            bottom = -self._fontHeightPix/2.0
+            top = self._fontHeightPix/2.0
         elif self.alignVert == 'top':
             bottom = -self._fontHeightPix
             top = 0
@@ -375,7 +444,7 @@ class TextStim(BaseVisualStim, ColorMixin):
         GL.glActiveTexture(GL.GL_TEXTURE1)
         GL.glEnable(GL.GL_TEXTURE_2D)
         GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             # unbind the main texture
             GL.glActiveTexture(GL.GL_TEXTURE0)
 #            GL.glActiveTextureARB(GL.GL_TEXTURE0_ARB)
@@ -388,7 +457,7 @@ class TextStim(BaseVisualStim, ColorMixin):
             GL.glBindTexture(GL.GL_TEXTURE_2D, self._texID)
             GL.glEnable(GL.GL_TEXTURE_2D)
 
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             GL.glActiveTexture(GL.GL_TEXTURE0)
             GL.glEnable(GL.GL_TEXTURE_2D)
             self._pygletTextObj.draw()
@@ -421,7 +490,7 @@ class TextStim(BaseVisualStim, ColorMixin):
         """
         desiredRGB = self._getDesiredRGB(self.rgb, self.colorSpace,
                                          self.contrast)
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             self._pygletTextObj = pyglet.font.Text(
                 self._font, self.text,
                 halign=self.alignHoriz, valign=self.alignVert,
@@ -481,7 +550,7 @@ class TextStim(BaseVisualStim, ColorMixin):
             right = self.width
         # how much to move bottom
         if self.alignVert in ('center', 'centre'):
-            bottom = -self._fontHeightPix / 2.0
+            bottom = -self._fontHeightPix /  2.0
             top = self._fontHeightPix / 2.0
         elif self.alignVert == 'top':
             bottom = -self._fontHeightPix
@@ -491,7 +560,7 @@ class TextStim(BaseVisualStim, ColorMixin):
             top = self._fontHeightPix
         # there seems to be a rounding err in pygame font textures
         Btex, Ttex, Ltex, Rtex = -0.01, 0.98, 0, 1.0
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             # unbind the mask texture
             GL.glActiveTexture(GL.GL_TEXTURE1)
             GL.glEnable(GL.GL_TEXTURE_2D)
@@ -509,7 +578,7 @@ class TextStim(BaseVisualStim, ColorMixin):
             GL.glEnable(GL.GL_TEXTURE_2D)
             GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
 
-        if self.win.winType == "pyglet":
+        if self.win.winType in ["pyglet", "glfw"]:
             self._pygletTextObj.draw()
         else:
             # draw a 4 sided polygon
@@ -575,7 +644,7 @@ class TextStim(BaseVisualStim, ColorMixin):
 
     @attributeSetter
     def bold(self, value):
-        """Make the text bold (True, False). Better to use a bold font name).
+        """Make the text bold (True, False) (better to use a bold font name).
         """
         self.__dict__['bold'] = value
         self.font = self.font  # call attributeSetter
@@ -631,7 +700,7 @@ class TextStim(BaseVisualStim, ColorMixin):
                 wrapWidth = defaultWrapWidth[self.units]
             else:
                 msg = "TextStim does now know a default wrap width for units %s"
-                raise AttributeError, msg % repr(self.units)
+                raise AttributeError(msg % repr(self.units))
         self.__dict__['wrapWidth'] = wrapWidth
         verts = numpy.array([self.wrapWidth, 0])
         self._wrapWidthPix = convertToPix(pos=numpy.array([0, 0]),
@@ -679,6 +748,7 @@ class TextStim(BaseVisualStim, ColorMixin):
         if win is None:
             win = self.win
         self._selectWindow(win)
+        blendMode = win.blendMode  # keep track for reset later
 
         GL.glPushMatrix()
         # for PyOpenGL this is necessary despite pop/PushMatrix, (not for
@@ -701,14 +771,13 @@ class TextStim(BaseVisualStim, ColorMixin):
             GL.glColor4f(desiredRGB[0], desiredRGB[1],
                          desiredRGB[2], self.opacity)
 
-            # self.win._progSignedTex)
             GL.glUseProgram(self.win._progSignedTexFont)
             # GL.glUniform3iv(GL.glGetUniformLocation(
             #       self.win._progSignedTexFont, "rgb"), 1,
             #       desiredRGB.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
             #  # set the texture to be texture unit 0
             GL.glUniform3f(
-                GL.glGetUniformLocation(self.win._progSignedTexFont, "rgb"),
+                GL.glGetUniformLocation(self.win._progSignedTexFont, b"rgb"),
                 desiredRGB[0], desiredRGB[1], desiredRGB[2])
 
         else:  # color is set in texture, so set glColor to white
@@ -717,7 +786,7 @@ class TextStim(BaseVisualStim, ColorMixin):
         # should text have a depth or just on top?
         GL.glDisable(GL.GL_DEPTH_TEST)
         # update list if necss and then call it
-        if win.winType == 'pyglet':
+        if win.winType in ["pyglet", "glfw"]:
             if self._needSetText:
                 self.setText()
             # and align based on x anchor
@@ -725,7 +794,7 @@ class TextStim(BaseVisualStim, ColorMixin):
                 GL.glTranslatef(-self.width, 0, 0)  # NB depth is set already
             if self.alignHoriz in ['center', 'centre']:
                 # NB depth is set already
-                GL.glTranslatef(-self.width / 2, 0, 0)
+                GL.glTranslatef(-self.width/2, 0, 0)
 
             # unbind the mask texture regardless
             GL.glActiveTexture(GL.GL_TEXTURE1)
@@ -743,6 +812,10 @@ class TextStim(BaseVisualStim, ColorMixin):
             if self._needUpdate:
                 self._updateList()
             GL.glCallList(self._listID)
+
+        # pyglets text.draw() method alters the blend func so reassert ours
+        win.setBlendMode(blendMode, log=False)
+
         if self.useShaders:
             # disable shader (but command isn't available pre-OpenGL2.0)
             GL.glUseProgram(0)

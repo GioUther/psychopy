@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -6,7 +6,7 @@ Demo of CustomMouse(), showing movement limits, click detected upon release,
 and ability to change the pointer.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
 # author Jeremy Gray
 

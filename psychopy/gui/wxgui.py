@@ -1,16 +1,24 @@
-"""To build simple dialogues etc. (requires wxPython)
-"""
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
-from __future__ import absolute_import
+"""To build simple dialogues etc. (requires wxPython)
+"""
 
+from __future__ import absolute_import, print_function
+
+from builtins import str
+from builtins import super
+from builtins import range
 from psychopy import logging
 import wx
 import numpy
 import os
-from psychopy.app.localization import _translate
+from psychopy.localization import _translate
+from pkg_resources import parse_version
 
 OK = wx.ID_OK
 
@@ -22,8 +30,12 @@ def ensureWxApp():
         wx.Dialog(None, -1)  # not shown; FileDialog gives same exception
         return True
     except wx._core.PyNoAppError:
-        if wx.version() < '2.9':
+        if parse_version(wx.__version__) < parse_version('2.9'):
             return wx.PySimpleApp()
+        elif parse_version(wx.__version__) >= parse_version('4.0'):
+            raise Exception("wx>=4.0 clashes with pyglet and making it unsafe "
+                            "as a PsychoPy gui helper. Please install PyQt (4 or 5)"
+                            " or wxPython3 instead.")
         else:
             return wx.App(False)
 
@@ -54,14 +66,16 @@ class Dlg(wx.Dialog):
     """
 
     def __init__(self, title=_translate('PsychoPy dialogue'),
-                 pos=None, size=wx.DefaultSize,
+                 pos=wx.DefaultPosition, size=wx.DefaultSize,
                  style=wx.DEFAULT_DIALOG_STYLE | wx.DIALOG_NO_PARENT,
                  labelButtonOK=_translate(" OK "),
                  labelButtonCancel=_translate(" Cancel ")):
         style = style | wx.RESIZE_BORDER
         global app  # avoid recreating for every gui
+        if pos is None:
+            pos = wx.DefaultPosition
         app = ensureWxApp()
-        wx.Dialog.__init__(self, None, -1, title, pos, size, style)
+        super().__init__(parent=None, id=-1, title=title, style=style, pos=pos)
         self.inputFields = []
         self.inputFieldTypes = []
         self.inputFieldNames = []
@@ -101,7 +115,7 @@ class Dlg(wx.Dialog):
             self.inputFieldTypes.append(type(initial))
         if type(initial) == numpy.ndarray:
             initial = initial.tolist()  # convert numpy arrays to lists
-        container = wx.GridSizer(cols=2, hgap=10)
+        container = wx.GridSizer(cols=2, vgap=0, hgap=10)
         # create label
         font = self.GetFont()
         dc = wx.WindowDC(self)
@@ -120,14 +134,14 @@ class Dlg(wx.Dialog):
             inputBox = wx.CheckBox(self, -1)
             inputBox.SetValue(initial)
         elif not choices:
-            inputWidth, inputHeight = dc.GetTextExtent(unicode(initial))
+            inputWidth, inputHeight = dc.GetTextExtent(str(initial))
             inputLength = wx.Size(max(50, inputWidth + 16),
                                   max(25, inputHeight + 8))
-            inputBox = wx.TextCtrl(self, -1, unicode(initial),
+            inputBox = wx.TextCtrl(self, -1, str(initial),
                                    size=inputLength)
         else:
             inputBox = wx.Choice(self, -1,
-                                 choices=[unicode(option)
+                                 choices=[str(option)
                                           for option in list(choices)])
             # Somewhat dirty hack that allows us to treat the choice just like
             # an input box when retrieving the data
@@ -187,13 +201,13 @@ class Dlg(wx.Dialog):
                 thisType = self.inputFieldTypes[n]
                 # try to handle different types of input from strings
                 logging.debug("%s: %s" % (self.inputFieldNames[n],
-                                          unicode(thisVal)))
+                                          str(thisVal)))
                 if thisType in (tuple, list, float, int):
                     # probably a tuple or list
                     exec("self.data.append(" + thisVal + ")")  # evaluate it
                 elif thisType == numpy.ndarray:
                     exec("self.data.append(numpy.array(" + thisVal + "))")
-                elif thisType in (str, unicode, bool):
+                elif thisType in (str, bool):
                     self.data.append(thisVal)
                 else:
                     logging.warning('unknown type:' + self.inputFieldNames[n])
@@ -220,6 +234,25 @@ class DlgFromDict(Dlg):
     """Creates a dialogue box that represents a dictionary of values.
     Any values changed by the user are change (in-place) by this
     dialogue box.
+
+    Parameters
+    ----------
+
+    sort_keys : bool
+        Whether the dictionary keys should be ordered alphabetically
+        for displaying.
+
+    copy_dict : bool
+        If False, modify ``dictionary`` in-place. If True, a copy of
+        the dictionary is created, and the altered version (after
+        user interaction) can be retrieved from
+        :attr:~`psychopy.gui.DlgFromDict.dictionary`.
+
+    show : bool
+        Whether to immediately display the dialog upon instantiation.
+         If False, it can be displayed at a later time by calling
+         its `show()` method.
+
     e.g.:
 
     ::
@@ -244,20 +277,38 @@ class DlgFromDict(Dlg):
     See GUI.py for a usage demo, including order and tip (tooltip).
     """
 
-    def __init__(self, dictionary, title='', fixed=(), order=(), tip=None):
-        Dlg.__init__(self, title)
+    def __init__(self, dictionary, title='', fixed=None, order=None, tip=None,
+                 sort_keys=True, copy_dict=False, show=True):
+        # We don't explicitly check for None identity
+        # for backward-compatibility reasons.
+        if not fixed:
+            fixed = []
+        if not order:
+            order = []
+        if not tip:
+            tip = dict()
+
         # app = ensureWxApp() done by Dlg
-        self.dictionary = dictionary
-        keys = self.dictionary.keys()
-        keys.sort()
-        tip = tip or {}
-        if len(order):
-            keys = order + list(set(keys).difference(set(order)))
-        types = dict([])
-        for field in keys:
+        super().__init__(title)
+
+        if copy_dict:
+            self.dictionary = dictionary.copy()
+        else:
+            self.dictionary = dictionary
+
+        self._keys = list(self.dictionary.keys())
+
+        if sort_keys:
+            self._keys.sort()
+        if order:
+            self._keys = list(order) + list(set(self._keys).difference(set(order)))
+
+        types = dict()
+
+        for field in self._keys:
             types[field] = type(self.dictionary[field])
             tooltip = ''
-            if field in tip.keys():
+            if field in tip:
                 tooltip = tip[field]
             if field in fixed:
                 self.addFixedField(field, self.dictionary[field], tip=tooltip)
@@ -266,10 +317,16 @@ class DlgFromDict(Dlg):
                               tip=tooltip)
             else:
                 self.addField(field, self.dictionary[field], tip=tooltip)
-        # show it and collect data
-        self.show()
+
+        if show:
+            self.show()
+
+    def show(self):
+        """Display the dialog.
+        """
+        super().show()
         if self.OK:
-            for n, thisKey in enumerate(keys):
+            for n, thisKey in enumerate(self._keys):
                 self.dictionary[thisKey] = self.data[n]
 
 
@@ -310,7 +367,7 @@ def fileSaveDlg(initFilePath="", initFileName="",
     global app  # avoid recreating for every gui
     app = ensureWxApp()
     dlg = wx.FileDialog(None, prompt, initFilePath,
-                        initFileName, allowed, wx.SAVE)
+                        initFileName, allowed, wx.FD_SAVE)
     if dlg.ShowModal() == OK:
         # get names of images and their directory
         outName = dlg.GetFilename()
@@ -356,7 +413,7 @@ def fileOpenDlg(tryFilePath="",
     global app  # avoid recreating for every gui
     app = ensureWxApp()
     dlg = wx.FileDialog(None, prompt, tryFilePath, tryFileName, allowed,
-                        wx.OPEN | wx.FILE_MUST_EXIST | wx.MULTIPLE)
+                        wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE)
     if dlg.ShowModal() == OK:
         # get names of images and their directory
         fullPaths = dlg.GetPaths()

@@ -1,12 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """Functions and classes related to unit conversion respective to a particular
 monitor"""
 
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
+from past.utils import old_div
 from psychopy import monitors
 import numpy as np
 from numpy import array, sin, cos, tan, pi, radians, degrees, hypot
@@ -49,12 +54,20 @@ _unit2PixMappings['degFlat'] = _degFlat2pix
 
 
 def _norm2pix(vertices, pos, win):
-    return (pos + vertices) * win.size / 2.0
+    if win.useRetina:
+        return (pos + vertices) * win.size / 4.0
+    else:
+        return (pos + vertices) * win.size / 2.0
+
 _unit2PixMappings['norm'] = _norm2pix
 
 
 def _height2pix(vertices, pos, win):
-    return (pos + vertices) * win.size[1]
+    if win.useRetina:
+        return (pos + vertices) * win.size[1] / 2.0
+    else:
+        return (pos + vertices) * win.size[1]
+
 _unit2PixMappings['height'] = _height2pix
 
 
@@ -125,9 +138,9 @@ def cm2deg(cm, monitor, correctFlat=False):
         msg = "Monitor %s has no known distance (SEE MONITOR CENTER)"
         raise ValueError(msg % monitor.name)
     if correctFlat:
-        return np.arctan(np.radians(cm / dist))
+        return np.degrees(np.arctan(old_div(cm, dist)))
     else:
-        return cm / (dist * 0.017455)
+        return old_div(cm, (dist * 0.017455))
 
 
 def deg2cm(degrees, monitor, correctFlat=False):
@@ -185,7 +198,7 @@ def deg2cm(degrees, monitor, correctFlat=False):
 
 
 def cm2pix(cm, monitor):
-    """Convert size in degrees to size in pixels for a given Monitor object
+    """Convert size in cm to size in pixels for a given Monitor object.
     """
     # check we have a monitor
     if not isinstance(monitor, monitors.Monitor):

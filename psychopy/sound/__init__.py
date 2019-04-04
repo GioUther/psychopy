@@ -1,8 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """Load and play sounds
 
 By default PsychoPy will try to use the following Libs, in this order, for
 sound reproduction but you can alter the order in
-preferences > general > audioLib:
+preferences > hardware > audioLib:
     ['sounddevice', 'pygame', 'pyo']
 For portaudio-based backends (all except for pygame) there is also a
 choice of the underlying sound driver (e.g. ASIO, CoreAudio etc).
@@ -41,10 +44,12 @@ preferable.
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
 import sys
 import os
 from psychopy import logging, prefs, exceptions
@@ -60,14 +65,16 @@ _audioLibs = ['sounddevice', 'pyo', 'pysoundcard', 'pygame']
 travisCI = bool(str(os.environ.get('TRAVIS')).lower() == 'true')
 if travisCI:
     # for sounddevice we built in some TravisCI protection but not in pyo
-    prefs.general['audioLib'] = ['sounddevice']
+    prefs.hardware['audioLib'] = ['sounddevice']
 
-for thisLibName in prefs.general['audioLib']:
+for thisLibName in prefs.hardware['audioLib']:
 
     try:
         if thisLibName == 'pyo':
             from . import backend_pyo as backend
             Sound = backend.SoundPyo
+            pyoSndServer = backend.pyoSndServer
+            audioDriver = backend.audioDriver
         elif thisLibName == 'sounddevice':
             from . import backend_sounddevice as backend
             Sound = backend.SoundDeviceSound
@@ -97,7 +104,7 @@ if audioLib is None:
     raise exceptions.DependencyError(
             "No sound libs could be loaded. Tried: {}\n"
             "Check whether the necessary sound libs are installed"
-            .format(prefs.general['audioLib']))
+            .format(prefs.hardware['audioLib']))
 
 # function to set the device (if current lib allows it)
 def setDevice(dev, kind=None):
@@ -126,50 +133,21 @@ def setDevice(dev, kind=None):
 
 # Set the device according to user prefs (if current lib allows it)
 if hasattr(backend, 'defaultOutput'):
-    pref = prefs.general['audioDevice']
+    pref = prefs.hardware['audioDevice']
     # is it a list or a simple string?
-    if type(prefs.general['audioDevice'])==list:
+    if type(prefs.hardware['audioDevice'])==list:
         # multiple options so use zeroth
-        dev = prefs.general['audioDevice'][0]
+        dev = prefs.hardware['audioDevice'][0]
     else:
         # a single option
-        dev = prefs.general['audioDevice']
+        dev = prefs.hardware['audioDevice']
     # is it simply "default" (do nothing)
-    if dev=='auto' or travisCI:
+    if dev=='default' or travisCI:
         pass  # do nothing
     elif dev not in backend.getDevices(kind='output'):
-        devNames = backend.getDevices(kind='output').keys()
-        logging.error("Requested audio device '{}' that is not available on "
+        devNames = sorted(backend.getDevices(kind='output').keys())
+        logging.error(u"Requested audio device '{}' that is not available on "
                         "this hardware. The 'audioDevice' preference should be one of "
                         "{}".format(dev, devNames))
     else:
         setDevice(dev, kind='output')
-
-def _bestDriver(devNames, devIDs):
-    """Find ASIO or Windows sound drivers
-    """
-    preferredDrivers = prefs.general['audioDriver']
-    outputID = None
-    audioDriver = None
-    osEncoding = sys.getfilesystemencoding()
-    for prefDriver in preferredDrivers:
-        logging.info('Looking for {}'.format(prefDriver))
-        if prefDriver.lower() == 'directsound':
-            prefDriver = u'Primary Sound'
-        # look for that driver in available devices
-        for devN, devString in enumerate(devNames):
-            logging.info('Examining for {}'.format(devString))
-            try:
-                ds = devString.decode(osEncoding).encode('utf-8').lower()
-                if prefDriver.encode('utf-8').lower() in ds:
-                    audioDriver = devString.decode(osEncoding).encode('utf-8')
-                    outputID = devIDs[devN]
-                    logging.info('Success: {}'.format(devString))
-                    # we found a driver don't look for others
-                    return audioDriver, outputID
-            except (UnicodeDecodeError, UnicodeEncodeError):
-                logging.info('Failed: {}'.format(devString))
-                logging.warn('find best sound driver - could not '
-                             'interpret unicode in driver name')
-    else:
-        return None, None

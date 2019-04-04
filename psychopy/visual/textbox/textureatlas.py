@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 #pylint: skip-file
@@ -8,6 +9,12 @@
 #  Distributed under the terms of the new BSD license.
 #
 # -----------------------------------------------------------------------------
+
+from __future__ import absolute_import, print_function
+
+
+from builtins import range
+from builtins import object
 import pyglet.gl as gl
 from pyglet.gl import (GLuint, glEnable, GL_TEXTURE_2D, glBindTexture, glTexParameteri,
                        GL_TEXTURE_WRAP_S, GL_CLAMP, GL_TEXTURE_WRAP_T, glTexImage2D,
@@ -140,9 +147,9 @@ class TextureAtlas(object):
             A newly allocated region as (x,y,width,height) or (-1,-1,0,0)
         '''
 
-        best_height = sys.maxint
+        best_height = sys.maxsize
         best_index = -1
-        best_width = sys.maxint
+        best_width = sys.maxsize
         region = 0, 0, width, height
 
         for i in range(len(self.nodes)):

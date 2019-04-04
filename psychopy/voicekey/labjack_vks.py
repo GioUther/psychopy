@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
-# encoding: utf-8
-
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """Class for voicekey trip signaling via Labjack device
 """
 
+from __future__ import absolute_import, print_function
 
 from . signal import _BaseVoiceKeySignal
 from . vk_tools import get_time, sleep

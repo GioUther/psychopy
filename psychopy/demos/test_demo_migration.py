@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """Migration helper script for Coder demos: test the conversion
 
   For all demos (there are ~70 or so total):
@@ -10,14 +13,20 @@
       win.close() present / absent
       core.quit() present / absent
       leading comment
-      shbang, encoding
+      shebang, encoding
 """
+from __future__ import absolute_import, print_function
 
-import sys, glob, os
+import glob, os
+import io
+
 
 def get_contents(f1, f2):
-    f1r = open(f1, 'rU').read()
-    f2r = open(f2, 'rU').read()
+    with io.open(f1, 'r', encoding='utf-8-sig') as f:
+        f1r = f.read()
+    with io.open(f2, 'r', encoding='utf-8-sig') as f:
+        f2r = f.read()
+
     return f1r, f2r
 
 def remove_shbang(f1, f2):
@@ -127,7 +136,7 @@ def process_files(f1, f2):
 
 if __name__ == '__main__':
     dirs = [d for d in glob.glob('coder/*') if os.path.isdir(d)]
-    print 'all pass unless noted'
+    print('all pass unless noted')
     for d in dirs:
         p = glob.glob(d+'/*.py')
         for f1 in p:
@@ -136,12 +145,12 @@ if __name__ == '__main__':
             f2 = f1.replace('coder/', 'coder_updated/')
             t1, t2 = process_files(f1, f2)
             if not t1 == t2:
-                print 'FAILED', f1
+                print('FAILED', f1)
                 t = t1[0]
                 i = 0
                 while t2.startswith(t):
                     i += 1
                     t += t1[i]
-                print '    ' + t[:-1] + ' |---'
+                print('    ' + t[:-1] + ' |---')
                 #print t1, '\n', t2
                 

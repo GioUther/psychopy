@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
 Demo to illustrate Dialog (Dlg) classes and usage.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
 from psychopy import gui  #fetch default gui handler (qt if available)
 ## you can explicitly choose one of the qt/wx backends like this:

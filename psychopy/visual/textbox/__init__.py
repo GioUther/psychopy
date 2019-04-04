@@ -1,10 +1,16 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 Created on Thu Mar 21 18:38:35 2013
 
 @author: Sol
 """
-from __future__ import division, print_function
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 import os
 import inspect
 import numbers
@@ -28,8 +34,8 @@ from pyglet.gl import (glCallList, glFinish, glGenLists, glNewList, glViewport,
                        GL_SMOOTH_LINE_WIDTH_RANGE, GL_SMOOTH_LINE_WIDTH_GRANULARITY,
                        GL_POLYGON_SMOOTH)
 
-from fontmanager import FontManager
-from textgrid import TextGrid
+from .fontmanager import FontManager
+from .textgrid import TextGrid
 
 
 def getTime():
@@ -129,7 +135,7 @@ class TextBox(object):
       stim and has the following functional difference:
           - TextBox attributes are never accessed directly; get* and set*
             methods are always used (this will be changed to use class
-            properies in the future).
+            properties in the future).
           - Setting an attribute of a TextBox only supports value replacement,
             ( textbox.setFontColor([1.0,1.0,1.0]) ) and does not support
             specifying operators.
@@ -253,7 +259,7 @@ class TextBox(object):
                  # rows*cols = maximum number of chars
                  # that can be displayed. If textgrid_shape
                  # is not None, then the TextBox size
-                 # must be atleast large enough to hold
+                 # must be at least large enough to hold
                  # the number of specified cols and rows.
                  # If the size specified is less than
                  # what is needed, the size will be increased
@@ -501,7 +507,7 @@ class TextBox(object):
 
     def getGlyphPositionForTextIndex(self, char_index):
         """
-        For the provided char_index, which is the index of one chatacter in
+        For the provided char_index, which is the index of one character in
         the current text being displayed by the TextBox ( getDisplayedText() ),
         return the bounding box position, width, and height for the associated
         glyph drawn to the screen. This factors in the glyphs position within
@@ -754,7 +760,7 @@ class TextBox(object):
 
     def getVertJust(self):
         """
-        Return how text should layed out vertically when the
+        Return how text should laid out vertically when the
         number of text grid rows is greater than the number
         needed to display the current text
         """
@@ -958,12 +964,12 @@ class TextBox(object):
         if not self._draw_start_dlist:
             dl_index = glGenLists(1)
             glNewList(dl_index, GL_COMPILE)
-            glViewport(0, 0, self._window.winHandle.screen.width,
-                       self._window.winHandle.screen.height)
+            glViewport(0, 0, self._window.size[0],
+                       self._window.size[1])
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
-            glOrtho(0, self._window.winHandle.screen.width, 0,
-                    self._window.winHandle.screen.height, -1, 1)
+            glOrtho(0, self._window.size[0], 0,
+                    self._window.size[1], -1, 1)
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
             glDisable(GL_DEPTH_TEST)
@@ -1158,7 +1164,7 @@ class TextBox(object):
             raise ValueError(
                 "TextBox: String color value could not be translated: %s" % (str(color)))
 
-        if isinstance(color, (float, int, long)) or (is_sequence(color) and len(color) == 3):
+        if isinstance(color, (float, int, int)) or (is_sequence(color) and len(color) == 3):
             color = arraytools.val2array(color, length=3)
             if color_space == 'dkl' and valid_opacity:
                 dkl_rgb = None
@@ -1269,7 +1275,7 @@ class TextBox(object):
         return te_x, te_y
 
     def __del__(self):
-        if hasattr(self, '_textbox_instance') and self.getName() in self._textbox_instance.keys():
+        if hasattr(self, '_textbox_instance') and self.getName() in self._textbox_instance:
             del self._textbox_instances[self.getName()]
         del self._current_glfont
         del self._text_grid

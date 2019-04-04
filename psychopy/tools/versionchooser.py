@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 """PsychoPy Version Chooser to specify version within experiment scripts.
 """
@@ -15,7 +15,10 @@ import subprocess  # for git commandline invocation
 from subprocess import CalledProcessError
 import psychopy  # for currently loaded version
 from psychopy import prefs
-from psychopy import logging, tools, web
+from psychopy import logging, tools, web, constants
+from pkg_resources import parse_version
+if constants.PY3:
+    from importlib import reload
 
 USERDIR = prefs.paths['userPrefsDir']
 VER_SUBDIR = 'versions'
@@ -28,7 +31,7 @@ _remoteVersionsCache = []
 
 # ideally want localization for error messages
 # but don't want to have the lib/ depend on app/, drat
-# from psychopy.app.localization import _translate  # ideal
+# from psychopy.localization import _translate  # ideal
 def _translate(string):
     """placeholder (non)function
     """
@@ -78,6 +81,21 @@ def useVersion(requestedVersion):
     if not reqdMajorMinorPatch:
         msg = _translate('Unknown version `{}`')
         raise ValueError(msg.format(requestedVersion))
+
+    if not os.path.isdir(VERSIONSDIR):
+        _clone(requestedVersion)  # Allow the versions subdirectory to be built
+
+    if constants.PY3:
+        py3Compatible = _versionFilter(versionOptions(local=False), None)
+        py3Compatible += _versionFilter(availableVersions(local=False), None)
+        py3Compatible.sort(reverse=True)
+
+        if reqdMajorMinorPatch not in py3Compatible:
+            msg = _translate("Please request a version of PsychoPy that is compatible with Python 3. "
+                             "You can choose from the following versions: {}. "
+                             "Alternatively, run a Python 2 installation of PsychoPy < v1.9.0.\n")
+            logging.error(msg.format(py3Compatible))
+            return
 
     if psychopy.__version__ != reqdMajorMinorPatch:
         # Switching required, so make sure `git` is available.
@@ -133,6 +151,7 @@ def _switchToVersion(requestedVersion):
     a site-packages directory, which should *not* be removed as it may
     contain other relevant and needed packages.
     """
+
     if not os.path.exists(prefs.paths['userPrefsDir']):
         os.mkdir(prefs.paths['userPrefsDir'])
     try:
@@ -178,7 +197,8 @@ def _localVersions(forceCheck=False):
             return [psychopy.__version__]
         else:
             cmd = 'git tag'
-            tagInfo = subprocess.check_output(cmd.split(), cwd=VERSIONSDIR)
+            tagInfo = subprocess.check_output(cmd.split(), cwd=VERSIONSDIR,
+                                              env=constants.ENVIRON).decode('UTF-8')
             allTags = tagInfo.splitlines()
             _localVersionsCache = sorted(allTags, reverse=True)
     return _localVersionsCache
@@ -190,15 +210,53 @@ def _remoteVersions(forceCheck=False):
         try:
             cmd = 'git ls-remote --tags https://github.com/psychopy/versions'
             tagInfo = subprocess.check_output(cmd.split(),
+                                              env=constants.ENVIRON,
                                               stderr=subprocess.PIPE)
         except (CalledProcessError, OSError):
             pass
         else:
-            allTags = [line.split('refs/tags/')[1]
-                       for line in tagInfo.splitlines() if '^{}' not in line]
+            if constants.PY3:
+                allTags = [line.split('refs/tags/')[1]
+                           for line in tagInfo.decode().splitlines()
+                           if '^{}' not in line]
+            else:
+                allTags = [line.split('refs/tags/')[1]
+                           for line in tagInfo.splitlines()
+                           if '^{}' not in line]
             # ensure most recent (i.e., highest) first
             _remoteVersionsCache = sorted(allTags, reverse=True)
     return _remoteVersionsCache
+
+
+def _versionFilter(versions, wxVersion):
+    """Returns all versions that are compatible with the Python and WX running PsychoPy
+
+    Parameters
+    ----------
+    versions: list
+        All available (valid) selections for the version to be chosen
+
+    Returns
+    -------
+    list
+        All valid selections for the version to be chosen that are compatible with Python version used
+    """
+
+    # Get Python 3 Compatibility
+    if constants.PY3:
+        msg = _translate("Filtering versions of PsychoPy only compatible with Python 3.")
+        logging.info(msg)
+        versions = [ver for ver in versions if ver == 'latest' or parse_version(ver) >= parse_version('1.90')]
+
+    # Get WX Compatibility
+    compatibleWX = '4.0'
+    if wxVersion is not None and parse_version(wxVersion) >= parse_version(compatibleWX):
+        msg = _translate("wx version: {}. Filtering versions of "
+                         "PsychoPy only compatible with wx >= version {}".format(wxVersion,
+                                                                              compatibleWX))
+        logging.info(msg)
+        return [ver for ver in versions if ver == 'latest' or parse_version(ver) > parse_version('1.85.04')]
+    return versions
 
 
 def availableVersions(local=True, forceCheck=False):
@@ -208,11 +266,12 @@ def availableVersions(local=True, forceCheck=False):
 
     Everything returned has the form Major.minor.patchLevel, as strings.
     """
+
     if local:
         return _localVersions(forceCheck)
     else:
         return sorted(
-            list(set(_localVersions(forceCheck) + _remoteVersions(
+            list(set([psychopy.__version__] + _localVersions(forceCheck) + _remoteVersions(
                 forceCheck))),
             reverse=True)
 
@@ -227,7 +286,6 @@ def fullVersion(partial):
     # expects availableVersions() return a reverse-sorted list
     if partial in ('', 'latest', None):
         return latestVersion()
-
     for tag in availableVersions(local=False):
         if tag.startswith(partial):
             return tag
@@ -245,7 +303,8 @@ def currentTag():
     """Returns the current tag name from the version repository
     """
     cmd = 'git describe --always --tag'.split()
-    tag = subprocess.check_output(cmd, cwd=VERSIONSDIR).split('-')[0]
+    tag = subprocess.check_output(cmd, cwd=VERSIONSDIR,
+                                  env=constants.ENVIRON).decode('UTF-8').split('-')[0]
     return tag
 
 
@@ -262,7 +321,8 @@ def _checkout(requestedVersion):
         msg = _translate("Couldn't find version {} locally. Trying github...")
         logging.info(msg.format(requestedVersion))
         subprocess.check_output('git fetch github --tags'.split(),
-                                cwd=VERSIONSDIR)
+                                cwd=VERSIONSDIR,
+                                env=constants.ENVIRON).decode('UTF-8')
         # is requested here now? forceCheck to refresh cache
         if requestedVersion not in _localVersions(forceCheck=True):
             msg = _translate("{} is not currently available.")
@@ -273,7 +333,8 @@ def _checkout(requestedVersion):
     cmd = ['git', 'checkout', requestedVersion]
     out = subprocess.check_output(cmd,
                                   stderr=subprocess.STDOUT,
-                                  cwd=VERSIONSDIR)
+                                  cwd=VERSIONSDIR,
+                                  env=constants.ENVIRON).decode('UTF-8')
     logging.debug(out)
     logging.exp('Success:  ' + ' '.join(cmd))
     return requestedVersion
@@ -288,7 +349,8 @@ def _clone(requestedVersion):
     cmd = ('git clone -o github https://github.com/psychopy/versions ' +
            VER_SUBDIR)
     print(cmd)
-    subprocess.check_output(cmd.split(), cwd=USERDIR)
+    subprocess.check_output(cmd.split(), cwd=USERDIR,
+                            env=constants.ENVIRON).decode('UTF-8')
 
     return _checkout(requestedVersion)
 
@@ -298,7 +360,8 @@ def _gitPresent():
     """
     try:
         gitvers = subprocess.check_output('git --version'.split(),
-                                          stderr=subprocess.PIPE)
+                                          stderr=subprocess.PIPE,
+                                          env=constants.ENVIRON).decode('UTF-8')
     except (CalledProcessError, OSError):
         gitvers = ''
     return bool(gitvers.startswith('git version'))

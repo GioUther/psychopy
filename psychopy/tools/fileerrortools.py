@@ -1,12 +1,15 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """Functions and classes related to file and directory error handling
 """
+from __future__ import absolute_import, print_function
 
+from builtins import str
 import os
 import glob
 

@@ -1,8 +1,13 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Part of the PsychoPy library
+# Copyright (C) 2018 Jonathan Peirce
+# Distributed under the terms of the GNU General Public License (GPL).
+
 """Data useful for calibrations (Smith-Pokorny cone fundamentals etc...)
 """
-# Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
-# Distributed under the terms of the GNU General Public License (GPL).
+from __future__ import absolute_import, print_function
 
 import numpy
 

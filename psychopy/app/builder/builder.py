@@ -1,43 +1,64 @@
-# Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
-# Distributed under the terms of the GNU General Public License (GPL).
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-from __future__ import absolute_import
+"""
+Defines the behavior of Psychopy's Builder view window
+Part of the PsychoPy library
+Copyright (C) 2018 Jonathan Peirce
+Distributed under the terms of the GNU General Public License (GPL).
+"""
 
+from __future__ import absolute_import, division, print_function
+
+from pkg_resources import parse_version
 import wx
+import wx.stc
 from wx.lib import platebtn, scrolledpanel
+
 try:
     from wx import aui
-except Exception:
+except ImportError:
     import wx.lib.agw.aui as aui  # some versions of phoenix
-import wx.stc
+try:
+    from wx.adv import PseudoDC
+except ImportError:
+    from wx import PseudoDC
+
+if parse_version(wx.__version__) < parse_version('4.0.3'):
+    wx.NewIdRef = wx.NewId
 
 import sys
 import os
+import subprocess
 import glob
 import copy
 import traceback
 import codecs
-import re
 import numpy
 
-from ..localization import _translate
+from psychopy.localization import _translate
 
-from . import experiment, components
+from ... import experiment
 from .. import stdOutRich, dialogs
-from .. import projects
-from psychopy import logging
+from ..icons import getAllIcons
+from psychopy import logging, constants, __version__
 from psychopy.tools.filetools import mergeFolder
 from .dialogs import (DlgComponentProperties, DlgExperimentProperties,
                       DlgCodeComponentProperties)
-
 from .flow import FlowPanel
-from .utils import FileDropTarget, WindowFrozen
+from ..utils import FileDropTarget, WindowFrozen
+from psychopy.experiment import components
+
+from psychopy.app import pavlovia_ui
+from psychopy.projects import pavlovia
+
+from psychopy.scripts import psyexpCompile
 
 
 canvasColor = [200, 200, 200]  # in prefs? ;-)
 routineTimeColor = wx.Colour(50, 100, 200, 200)
 staticTimeColor = wx.Colour(200, 50, 50, 100)
+disabledTimeColor = wx.Colour(127, 127, 127, 100)
 nonSlipFill = wx.Colour(150, 200, 150, 255)
 nonSlipEdge = wx.Colour(0, 100, 0, 255)
 relTimeFill = wx.Colour(200, 150, 150, 255)
@@ -47,9 +68,6 @@ darkgrey = wx.Colour(65, 65, 65, 255)
 white = wx.Colour(255, 255, 255, 255)
 darkblue = wx.Colour(30, 30, 150, 255)
 codeSyntaxOkay = wx.Colour(220, 250, 220, 255)  # light green
-
-# regular expression to check for unescaped '$' to indicate code:
-_unescapedDollarSign_re = re.compile(r"^\$|[^\\]\$")
 
 # _localized separates internal (functional) from displayed strings
 # long form here allows poedit string discovery
@@ -63,7 +81,7 @@ _localized = {
     'I/O': _translate('I/O'),
     'Add to favorites': _translate('Add to favorites'),
     'Remove from favorites': _translate('Remove from favorites'),
-    #contextMenuLabels
+    # contextMenuLabels
     'edit': _translate('edit'),
     'remove': _translate('remove'),
     'copy': _translate('copy'),
@@ -114,7 +132,7 @@ class RoutineCanvas(wx.ScrolledWindow):
         self.timeXposEnd = self.timeXposStart + 400  # onResize() overrides
 
         # create a PseudoDC to record our drawing
-        self.pdc = wx.PseudoDC()
+        self.pdc = PseudoDC()
         self.pen_cache = {}
         self.brush_cache = {}
         # vars for handling mouse clicks
@@ -131,7 +149,7 @@ class RoutineCanvas(wx.ScrolledWindow):
         self.contextItemFromID = {}
         self.contextIDFromItem = {}
         for item in self.contextMenuItems:
-            id = wx.NewId()
+            id = wx.NewIdRef()
             self.contextItemFromID[id] = item
             self.contextIDFromItem[item] = id
 
@@ -193,7 +211,7 @@ class RoutineCanvas(wx.ScrolledWindow):
         for item in self.contextMenuItems:
             id = self.contextIDFromItem[item]
             menu.Append(id, self.contextMenuLabels[item])
-            wx.EVT_MENU(menu, id, self.onContextSelect)
+            menu.Bind(wx.EVT_MENU, self.onContextSelect, id=id)
         self.frame.PopupMenu(menu, xy)
         menu.Destroy()  # destroy to avoid mem leak
 
@@ -254,11 +272,9 @@ class RoutineCanvas(wx.ScrolledWindow):
         self.pdc.Clear()  # clear the screen
         self.pdc.RemoveAll()  # clear all objects (icon buttons)
 
-        self.pdc.BeginDrawing()
-
         # work out where the component names and icons should be from name
         # lengths
-        self.setFontSize(self.fontBaseSize / self.dpi, self.pdc)
+        self.setFontSize(self.fontBaseSize // self.dpi, self.pdc)
         longest = 0
         w = 50
         for comp in self.routine:
@@ -293,7 +309,6 @@ class RoutineCanvas(wx.ScrolledWindow):
 
         # the 50 allows space for labels below the time axis
         self.SetVirtualSize((self.maxWidth, yPos + 50))
-        self.pdc.EndDrawing()
         self.Refresh()  # refresh the visible window after drawing (OnPaint)
 
     def getMaxTime(self):
@@ -312,7 +327,7 @@ class RoutineCanvas(wx.ScrolledWindow):
         xSt = self.timeXposStart
         xEnd = self.timeXposEnd
 
-        # dc.SetId(wx.NewId())
+        # dc.SetId(wx.NewIdRef())
         dc.SetPen(wx.Pen(wx.Colour(0, 0, 0, 150)))
         # draw horizontal lines on top and bottom
         dc.DrawLine(x1=xSt, y1=yPosTop,
@@ -322,14 +337,14 @@ class RoutineCanvas(wx.ScrolledWindow):
         # draw vertical time points
         # gives roughly 1/10 the width, but in rounded to base 10 of
         # 0.1,1,10...
-        unitSize = 10**numpy.ceil(numpy.log10(tMax * 0.8)) / 10.0
+        unitSize = 10 ** numpy.ceil(numpy.log10(tMax * 0.8)) / 10.0
         if tMax / unitSize < 3:
             # gives units of 2 (0.2,2,20)
-            unitSize = 10**numpy.ceil(numpy.log10(tMax * 0.8)) / 50.0
+            unitSize = 10 ** numpy.ceil(numpy.log10(tMax * 0.8)) / 50.0
         elif tMax / unitSize < 6:
             # gives units of 5 (0.5,5,50)
-            unitSize = 10**numpy.ceil(numpy.log10(tMax * 0.8)) / 20.0
-        for lineN in range(int(numpy.floor(tMax / unitSize))):
+            unitSize = 10 ** numpy.ceil(numpy.log10(tMax * 0.8)) / 20.0
+        for lineN in range(int(numpy.floor((tMax / unitSize)))):
             # vertical line:
             dc.DrawLine(xSt + lineN * unitSize / xScale, yPosTop - 4,
                         xSt + lineN * unitSize / xScale, yPosBottom + 4)
@@ -341,17 +356,17 @@ class RoutineCanvas(wx.ScrolledWindow):
                 dc.DrawText('%.2g' % (lineN * unitSize), xSt + lineN *
                             unitSize / xScale - 4, yPosBottom + 10)
         # add a label
-        self.setFontSize(self.fontBaseSize / self.dpi, dc)
+        self.setFontSize(self.fontBaseSize // self.dpi, dc)
         # y is y-half height of text
-        dc.DrawText('t (sec)', xEnd + 5, yPosTop -
-                    self.GetFullTextExtent('t')[1] / 2.0)
+        dc.DrawText('t (sec)', xEnd + 5,
+                    yPosTop - self.GetFullTextExtent('t')[1] / 2.0)
         # or draw bottom labels only if scrolling is turned on, virtual size >
         # available size?
         if yPosBottom > 300:
             # if bottom of grid is far away then draw labels there too
             # y is y-half height of text
-            dc.DrawText('t (sec)', xEnd + 5, yPosBottom -
-                        self.GetFullTextExtent('t')[1] / 2.0)
+            dc.DrawText('t (sec)', xEnd + 5,
+                        yPosBottom - self.GetFullTextExtent('t')[1] / 2.0)
 
     def setFontSize(self, size, dc):
         font = self.GetFont()
@@ -363,11 +378,11 @@ class RoutineCanvas(wx.ScrolledWindow):
         # set an id for the region of this component (so it can
         # act as a button). see if we created this already.
         id = None
-        for key in self.componentFromID.keys():
+        for key in self.componentFromID:
             if self.componentFromID[key] == component:
                 id = key
         if not id:  # then create one and add to the dict
-            id = wx.NewId()
+            id = wx.NewIdRef()
             self.componentFromID[id] = component
         dc.SetId(id)
         # deduce start and stop times if possible
@@ -383,9 +398,14 @@ class RoutineCanvas(wx.ScrolledWindow):
         # calculate rectangle for component
         xScale = self.getSecsPerPixel()
         dc.SetPen(wx.Pen(wx.Colour(200, 100, 100, 0), style=wx.TRANSPARENT))
-        dc.SetBrush(wx.Brush(staticTimeColor))
-        xSt = self.timeXposStart + startTime / xScale
-        w = duration / xScale + 1  # +1 b/c border alpha=0 in dc.SetPen
+
+        if component.params['disabled'].val:
+            dc.SetBrush(wx.Brush(disabledTimeColor))
+        else:
+            dc.SetBrush(wx.Brush(staticTimeColor))
+
+        xSt = self.timeXposStart + startTime // xScale
+        w = duration // xScale + 1  # +1 b/c border alpha=0 in dc.SetPen
         w = max(min(w, 10000), 2)  # ensure 2..10000 pixels
         h = yPosBottom - yPosTop
         # name label, position:
@@ -395,13 +415,13 @@ class RoutineCanvas(wx.ScrolledWindow):
             # duration
             name += ' ???'
         nameW, nameH = self.GetFullTextExtent(name)[0:2]
-        x = xSt + w / 2
+        x = xSt + w // 2
         staticLabelTop = (0, 50, 60)[self.drawSize]
         y = staticLabelTop - nameH * 3
         fullRect = wx.Rect(x - 20, y, nameW, nameH)
         # draw the rectangle, draw text on top:
         dc.DrawRectangle(xSt, yPosTop - nameH * 4, w, h + nameH * 5)
-        dc.DrawText(name, x - nameW / 2, y)
+        dc.DrawText(name, x - nameW // 2, y)
         # update bounds to include time bar
         fullRect.Union(wx.Rect(xSt, yPosTop, w, h))
         dc.SetIdBounds(id, fullRect)
@@ -411,31 +431,32 @@ class RoutineCanvas(wx.ScrolledWindow):
         # set an id for the region of this component (so it
         # can act as a button). see if we created this already
         id = None
-        for key in self.componentFromID.keys():
+        for key in self.componentFromID:
             if self.componentFromID[key] == component:
                 id = key
         if not id:  # then create one and add to the dict
-            id = wx.NewId()
+            id = wx.NewIdRef()
             self.componentFromID[id] = component
         dc.SetId(id)
 
         iconYOffset = (6, 6, 0)[self.drawSize]
-        thisIcon = components.icons[component.getType()][str(
+        componIcons = getAllIcons(self.app.prefs.builder['componentsFolders'])
+        thisIcon = componIcons[component.getType()]["{}".format(
             self.iconSize)]  # getType index 0 is main icon
         dc.DrawBitmap(thisIcon, self.iconXpos, yPos + iconYOffset, True)
         fullRect = wx.Rect(self.iconXpos, yPos,
                            thisIcon.GetWidth(), thisIcon.GetHeight())
 
-        self.setFontSize(self.fontBaseSize / self.dpi, dc)
+        self.setFontSize(self.fontBaseSize // self.dpi, dc)
 
         name = component.params['name'].val
         # get size based on text
         w, h = self.GetFullTextExtent(name)[0:2]
         # draw text
         _base = (self.iconSize, self.iconSize, 10)[self.drawSize]
-        x = self.iconXpos - self.dpi / 10 - w + _base
+        x = self.iconXpos - self.dpi // 10 - w + _base
         _adjust = (5, 5, -2)[self.drawSize]
-        y = yPos + thisIcon.GetHeight() / 2 - h / 2 + _adjust
+        y = yPos + thisIcon.GetHeight() // 2 - h // 2 + _adjust
         dc.DrawText(name, x - 20, y)
         fullRect.Union(wx.Rect(x - 20, y, w, h))
 
@@ -447,12 +468,17 @@ class RoutineCanvas(wx.ScrolledWindow):
             xScale = self.getSecsPerPixel()
             dc.SetPen(wx.Pen(wx.Colour(200, 100, 100, 0),
                              style=wx.TRANSPARENT))
-            dc.SetBrush(wx.Brush(routineTimeColor))
+
+            if component.params['disabled'].val:
+                dc.SetBrush(wx.Brush(disabledTimeColor))
+            else:
+                dc.SetBrush(wx.Brush(routineTimeColor))
+
             hSize = (3.5, 2.75, 2)[self.drawSize]
             yOffset = (3, 3, 0)[self.drawSize]
-            h = self.componentStep / hSize
-            xSt = self.timeXposStart + startTime / xScale
-            w = duration / xScale + 1
+            h = self.componentStep // hSize
+            xSt = self.timeXposStart + startTime // xScale
+            w = duration // xScale + 1
             if w > 10000:
                 w = 10000  # limit width to 10000 pixels!
             if w < 2:
@@ -469,7 +495,7 @@ class RoutineCanvas(wx.ScrolledWindow):
 
     def pasteCompon(self, event=None, component=None):
         if not self.app.copiedCompon:
-            return -1  #not possible to paste if nothing copied
+            return -1  # not possible to paste if nothing copied
         exp = self.frame.exp
         origName = self.app.copiedCompon.params['name'].val
         defaultName = exp.namespace.makeValid(origName)
@@ -504,18 +530,20 @@ class RoutineCanvas(wx.ScrolledWindow):
         else:
             helpUrl = None
         old_name = component.params['name'].val
+        old_disabled = component.params['disabled'].val
         # check current timing settings of component (if it changes we
         # need to update views)
         initialTimings = component.getStartAndDuration()
         # create the dialog
-        if isinstance(component, components.code.CodeComponent):
+        if hasattr(component, 'type') and component.type.lower() == 'code':
             _Dlg = DlgCodeComponentProperties
         else:
             _Dlg = DlgComponentProperties
         dlg = _Dlg(frame=self.frame,
                    title=component.params['name'].val + ' Properties',
                    params=component.params,
-                   order=component.order, helpUrl=helpUrl, editing=True)
+                   order=component.order, helpUrl=helpUrl, editing=True,
+                   depends=component.depends)
         if dlg.OK:
             if component.getStartAndDuration() != initialTimings:
                 self.redrawRoutine()  # need to refresh timings section
@@ -524,6 +552,8 @@ class RoutineCanvas(wx.ScrolledWindow):
                 # self.frame.flowPanel.Refresh()
             elif component.params['name'].val != old_name:
                 self.redrawRoutine()  # need to refresh name
+            elif component.params['disabled'].val != old_disabled:
+                self.redrawRoutine()  # need to refresh color
             self.frame.exp.namespace.remove(old_name)
             self.frame.exp.namespace.add(component.params['name'].val)
             self.frame.addToUndoStack("EDIT `%s`" %
@@ -552,9 +582,8 @@ class RoutinesNotebook(aui.AuiNotebook):
     def getCurrentRoutine(self):
         routinePage = self.getCurrentPage()
         if routinePage:
-            return routinePage.routine
-        else:  # no routine page
-            return None
+            return routinePage.routine  # no routine page
+        return None
 
     def setCurrentRoutine(self, routine):
         for ii in range(self.GetPageCount()):
@@ -564,16 +593,14 @@ class RoutinesNotebook(aui.AuiNotebook):
     def getCurrentPage(self):
         if self.GetSelection() >= 0:
             return self.GetPage(self.GetSelection())
-        else:  # there are no routine pages
-            return None
+        return None
 
     def addRoutinePage(self, routineName, routine):
         #        routinePage = RoutinePage(parent=self, routine=routine)
         routinePage = RoutineCanvas(notebook=self, routine=routine)
         self.AddPage(routinePage, routineName)
 
-    def renameRoutinePage(self, index, newName,):
-
+    def renameRoutinePage(self, index, newName, ):
         self.SetPageText(index, newName)
 
     def removePages(self):
@@ -610,7 +637,7 @@ class RoutinesNotebook(aui.AuiNotebook):
         name = routine.name
         # update experiment object, namespace, and flow window (if this is
         # being used)
-        if name in self.frame.exp.routines.keys():
+        if name in self.frame.exp.routines:
             # remove names of the routine and its components from namespace
             _nsp = self.frame.exp.namespace
             for c in self.frame.exp.routines[name]:
@@ -683,14 +710,10 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         self.sizerList = []
 
         for categ in categories:
-            # Localized labels on PlateButton may be corrupted in Ubuntu.
-            if sys.platform.startswith('linux'):
-                label = categ
+            if categ in _localized:
+                label = _localized[categ]
             else:
-                if categ in _localized.keys():
-                    label = _localized[categ]
-                else:
-                    label = categ
+                label = categ
             _style = platebtn.PB_STYLE_DROPARROW
             sectionBtn = platebtn.PlateButton(self, -1, label,
                                               style=_style, name=categ)
@@ -716,14 +739,13 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         self.SetSizer(self.sizer)
         self.SetAutoLayout(True)
         self.SetupScrolling()
-        self.SetDropTarget(FileDropTarget(builder=self.frame))
 
     def on_resize(self, event):
         if self.app.prefs.app['largeIcons']:
-            cols = self.GetClientSize()[0] / 58
+            cols = self.GetClientSize()[0] // 58
         else:
-            cols = self.GetClientSize()[0] / 34
-        for category in self.panels.values():
+            cols = self.GetClientSize()[0] // 34
+        for category in list(self.panels.values()):
             category.SetCols(max(1, cols))
 
     def makeFavoriteButtons(self):
@@ -737,7 +759,7 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         self.makeFavoriteButtons()
         # then add another copy for each category that the component itself
         # lists
-        for thisName in self.components.keys():
+        for thisName in self.components:
             thisComp = self.components[thisName]
             # NB thisComp is a class - we can't use its methods/attribs until
             # it is an instance
@@ -748,16 +770,17 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
     def addComponentButton(self, name, panel):
         """Create a component button and add it to a specific panel's sizer
         """
+        componIcons = getAllIcons(self.app.prefs.builder['componentsFolders'])
         thisComp = self.components[name]
         shortName = name
         for redundant in ['component', 'Component']:
             if redundant in name:
                 shortName = name.replace(redundant, "")
         if self.app.prefs.app['largeIcons']:
-            thisIcon = components.icons[name][
+            thisIcon = componIcons[name][
                 '48add']  # index 1 is the 'add' icon
         else:
-            thisIcon = components.icons[name][
+            thisIcon = componIcons[name][
                 '24add']  # index 1 is the 'add' icon
         btn = wx.BitmapButton(self, -1, thisIcon,
                               size=(thisIcon.GetWidth() + 10,
@@ -801,38 +824,44 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         # for the main sizer we kept track of everything with a list:
         if sizer == self.sizer:
             return self.sizerList.index(obj)
-        else:
-            # let's just hope the
-            index = None
-            for ii, child in enumerate(sizer.Children):
-                if child.GetWindow() == obj:
-                    index = ii
-                    break
-            return index
+        index = None
+        for ii, child in enumerate(sizer.Children):
+            if child.GetWindow() == obj:
+                index = ii
+                break
+        return index
 
     def onRightClick(self, evt):
+        """
+        Defines rightclick behavior within builder view's
+        components panel
+        """
         btn = evt.GetEventObject()
         self._rightClicked = btn
         index = self.getIndexInSizer(btn, self.panels['Favorites'])
         if index is None:
             # not currently in favs
             msg = "Add to favorites"
-            function = self.onAddToFavorites
+            clickFunc = self.onAddToFavorites
         else:
             # is currently in favs
             msg = "Remove from favorites"
-            function = self.onRemFromFavorites
+            clickFunc = self.onRemFromFavorites
         menu = wx.Menu()
-        id = wx.NewId()
+        id = wx.NewIdRef()
         menu.Append(id, _localized[msg])
-        wx.EVT_MENU(menu, id, function)
+        menu.Bind(wx.EVT_MENU, clickFunc, id=id)
         # where to put the context menu
         x, y = evt.GetPosition()  # this is position relative to object
         xBtn, yBtn = evt.GetEventObject().GetPosition()
         self.PopupMenu(menu, (x + xBtn, y + yBtn))
         menu.Destroy()  # destroy to avoid mem leak
 
-    def onClick(self, evt):
+    def onClick(self, evt, timeout=None):
+        """
+        Defines left-click behavior for builder views components panel
+        :param: evt can be a wx.Event OR a component class name (MouseComponent)
+        """
         # get name of current routine
         currRoutinePage = self.frame.routinePanel.getCurrentPage()
         if not currRoutinePage:
@@ -843,8 +872,10 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
             return False
         currRoutine = self.frame.routinePanel.getCurrentRoutine()
         # get component name
-        newClassStr = self.componentFromID[evt.GetId()]
-        componentName = newClassStr.replace('Component', '')
+        if hasattr(evt, "GetId"):
+            newClassStr = self.componentFromID[evt.GetId()]
+        else:
+            newClassStr = evt
         newCompClass = self.components[newClassStr]
         newComp = newCompClass(parentName=currRoutine.name,
                                exp=self.frame.exp)
@@ -854,13 +885,16 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         else:
             helpUrl = None
         # create component template
-        if componentName == 'Code':
+        if newClassStr == 'CodeComponent':
             _Dlg = DlgCodeComponentProperties
         else:
             _Dlg = DlgComponentProperties
-        dlg = _Dlg(frame=self.frame, title=componentName + ' Properties',
+        dlg = _Dlg(frame=self.frame,
+                   title='{} Properties'.format(newComp.params['name']),
                    params=newComp.params, order=newComp.order,
-                   helpUrl=helpUrl)
+                   helpUrl=helpUrl,
+                   depends=newComp.depends,
+                   timeout=timeout)
 
         compName = newComp.params['name']
         if dlg.OK:
@@ -882,6 +916,7 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         return True
 
     def onAddToFavorites(self, evt=None, btn=None):
+        """Defines Add To Favorites Menu Behavior"""
         if btn is None:
             btn = self._rightClicked
         if btn.Name not in self.favorites.getFavorites():
@@ -892,6 +927,7 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
         self._rightClicked = None
 
     def onRemFromFavorites(self, evt=None, btn=None):
+        """Defines Remove from Favorites Menu Behavior"""
         if btn is None:
             btn = self._rightClicked
         index = self.getIndexInSizer(btn, self.panels['Favorites'])
@@ -905,6 +941,8 @@ class ComponentsPanel(scrolledpanel.ScrolledPanel):
 
 
 class FavoriteComponents(object):
+    """Defines the Favorite Components Object class, meant for dealing with
+    the user's frequently accessed components"""
 
     def __init__(self, componentsPanel, threshold=20, neutral=0):
         super(FavoriteComponents, self).__init__()
@@ -918,13 +956,14 @@ class FavoriteComponents(object):
         self.setDefaults()
 
     def setDefaults(self):
+        """Defines Default Favorite Components"""
         # set those that are favorites by default
         for comp in ('ImageComponent', 'KeyboardComponent',
                      'SoundComponent', 'TextComponent'):
-            if comp not in self.currentLevels.keys():
+            if comp not in self.currentLevels:
                 self.currentLevels[comp] = self.threshold
-        for comp in self.panel.components.keys():
-            if comp not in self.currentLevels.keys():
+        for comp in self.panel.components:
+            if comp not in self.currentLevels:
                 self.currentLevels[comp] = self.neutral
 
     def makeFavorite(self, compName):
@@ -947,7 +986,7 @@ class FavoriteComponents(object):
         than the threshold and there will be not more than
         max length prefs['builder']['maxFavorites']
         """
-        sortedVals = sorted(self.currentLevels.items(),
+        sortedVals = sorted(list(self.currentLevels.items()),
                             key=lambda x: x[1], reverse=True)
         favorites = []
         maxFav = self.prefs.builder['maxFavorites']
@@ -965,12 +1004,13 @@ class FavoriteComponents(object):
 
 
 class BuilderFrame(wx.Frame):
+    """Defines construction of the Psychopy Builder Frame"""
 
     def __init__(self, parent, id=-1, title='PsychoPy (Experiment Builder)',
                  pos=wx.DefaultPosition, fileName=None, frameData=None,
                  style=wx.DEFAULT_FRAME_STYLE, app=None):
 
-        if fileName is not None:
+        if (fileName is not None) and (type(fileName) == bytes):
             fileName = fileName.decode(sys.getfilesystemencoding())
 
         self.app = app
@@ -981,12 +1021,13 @@ class BuilderFrame(wx.Frame):
         self.prefs = self.app.prefs.builder
         self.appPrefs = self.app.prefs.app
         self.paths = self.app.prefs.paths
-        self.IDs = self.app.IDs
         self.frameType = 'builder'
         self.filename = fileName
         self.htmlPath = None
+        self.project = None  # type: pavlovia.PavloviaProject
+        self.btnHandles = {}  # stores toolbar buttons so they can be altered
 
-        if fileName in self.appData['frames'].keys():
+        if fileName in self.appData['frames']:
             self.frameData = self.appData['frames'][fileName]
         else:  # work out a new frame size/location
             dispW, dispH = self.app.getPrimaryDisplaySize()
@@ -1004,7 +1045,6 @@ class BuilderFrame(wx.Frame):
 
         # we didn't have the key or the win was minimized / invalid
         if self.frameData['winH'] == 0 or self.frameData['winW'] == 0:
-
             self.frameData['winX'], self.frameData['winY'] = (0, 0)
         if self.frameData['winY'] < 20:
             self.frameData['winY'] = 20
@@ -1092,8 +1132,10 @@ class BuilderFrame(wx.Frame):
         self.Bind(wx.EVT_END_PROCESS, self.onProcessEnded)
 
         self.app.trackFrame(self)
+        self.SetDropTarget(FileDropTarget(targetFrame=self))
 
     def makeToolbar(self):
+        """Produces Toolbar for the Builder Frame"""
         # ---toolbar---#000000#FFFFFF-----------------------------------------
         _style = wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT
         self.toolbar = self.CreateToolBar(_style)
@@ -1119,7 +1161,7 @@ class BuilderFrame(wx.Frame):
         stopBmp = wx.Bitmap(join(rc, 'stop%i.png' % tbSize), PNG)
         runBmp = wx.Bitmap(join(rc, 'run%i.png' % tbSize), PNG)
         compileBmp = wx.Bitmap(join(rc, 'compile%i.png' % tbSize), PNG)
-        settingsBmp = wx.Bitmap(join(rc, 'settingsExp%i.png' % tbSize), PNG)
+        settingsBmp = wx.Bitmap(join(rc, 'cogwindow%i.png' % tbSize), PNG)
         preferencesBmp = wx.Bitmap(join(rc, 'preferences%i.png' % tbSize),
                                    PNG)
         monitorsBmp = wx.Bitmap(join(rc, 'monitors%i.png' % tbSize), PNG)
@@ -1132,66 +1174,173 @@ class BuilderFrame(wx.Frame):
         keys = {k: self.app.keys[k].replace('Ctrl+', ctrlKey)
                 for k in self.app.keys}
 
-        item = tb.AddSimpleTool(wx.ID_ANY, newBmp,
-                         _translate("New [%s]") % keys['new'],
-                         _translate("Create new experiment file"))
-        tb.Bind(wx.EVT_TOOL, self.app.newBuilderFrame, id=item.GetId())
-        item = tb.AddSimpleTool(wx.ID_ANY, openBmp,
-                         _translate("Open [%s]") % keys['open'],
-                         _translate("Open an existing experiment file"))
-        tb.Bind(wx.EVT_TOOL, self.fileOpen, id=item.GetId())
-        self.IDs.bldrBtnSave = tb.AddSimpleTool(-1, saveBmp,
-                         _translate("Save [%s]") % keys['save'],
-                         _translate("Save current experiment file")).GetId()
-        tb.EnableTool(self.IDs.bldrBtnSave, False)
-        tb.Bind(wx.EVT_TOOL, self.fileSave, id=self.IDs.bldrBtnSave)
-        item = tb.AddSimpleTool(wx.ID_ANY, saveAsBmp,
-                         _translate("Save As... [%s]") % keys['saveAs'],
-                         _translate("Save current experiment file as..."))
-        tb.Bind(wx.EVT_TOOL, self.fileSaveAs, id=item.GetId())
-        self.IDs.bldrBtnUndo = tb.AddSimpleTool(wx.ID_ANY, undoBmp,
-                         _translate("Undo [%s]") % keys['undo'],
-                         _translate("Undo last action")).GetId()
-        tb.Bind(wx.EVT_TOOL, self.undo, id=self.IDs.bldrBtnUndo)
-        self.IDs.bldrBtnRedo = tb.AddSimpleTool(wx.ID_ANY, redoBmp,
-                         _translate("Redo [%s]") % keys['redo'],
-                         _translate("Redo last action")).GetId()
-        tb.Bind(wx.EVT_TOOL, self.redo, id=self.IDs.bldrBtnRedo)
+        if 'phoenix' in wx.PlatformInfo:
+            item = tb.AddTool(wx.ID_ANY,
+                              _translate("New [%s]") % keys['new'],
+                              newBmp,
+                              _translate("Create new experiment file"))
+        else:
+            item = tb.AddSimpleTool(wx.ID_ANY,
+                                    newBmp,
+                                    _translate("New [%s]") % keys['new'],
+                                    _translate("Create new experiment file"))
+        tb.Bind(wx.EVT_TOOL, self.app.newBuilderFrame, item)
+
+        if 'phoenix' in wx.PlatformInfo:
+            item = tb.AddTool(wx.ID_ANY,
+                              _translate("Open [%s]") % keys['open'],
+                              openBmp,
+                              _translate("Open an existing experiment file"))
+        else:
+            item = tb.AddSimpleTool(wx.ID_ANY,
+                                    openBmp,
+                                    _translate("Open [%s]") % keys['open'],
+                                    _translate("Open an existing experiment file"))
+        tb.Bind(wx.EVT_TOOL, self.fileOpen, item)
+
+        if 'phoenix' in wx.PlatformInfo:
+            self.bldrBtnSave = tb.AddTool(
+                -1,
+                _translate("Save [%s]") % keys['save'],
+                saveBmp,
+                _translate("Save current experiment file"))
+        else:
+            self.bldrBtnSave = tb.AddSimpleTool(
+                -1,
+                saveBmp,
+                _translate("Save [%s]") % keys['save'],
+                _translate("Save current experiment file"))
+        self.toolbar.EnableTool(self.bldrBtnSave.Id, False)
+        tb.Bind(wx.EVT_TOOL, self.fileSave, self.bldrBtnSave)
+
+        if 'phoenix' in wx.PlatformInfo:
+            item = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Save As... [%s]") % keys['saveAs'],
+                saveAsBmp,
+                _translate("Save current experiment file as..."))
+        else:
+            item = tb.AddSimpleTool(
+                wx.ID_ANY,
+                saveAsBmp,
+                _translate("Save As... [%s]") % keys['saveAs'],
+                _translate("Save current experiment file as..."))
+        tb.Bind(wx.EVT_TOOL, self.fileSaveAs, item)
+
+        if 'phoenix' in wx.PlatformInfo:
+            self.bldrBtnUndo = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Undo [%s]") % keys['undo'],
+                undoBmp,
+                _translate("Undo last action"))
+        else:
+            self.bldrBtnUndo = tb.AddSimpleTool(
+                wx.ID_ANY,
+                undoBmp,
+                _translate("Undo [%s]") % keys['undo'],
+                _translate("Undo last action"))
+        tb.Bind(wx.EVT_TOOL, self.undo, self.bldrBtnUndo)
+
+        if 'phoenix' in wx.PlatformInfo:
+            self.bldrBtnRedo = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Redo [%s]") % keys['redo'],
+                redoBmp,
+                _translate("Redo last action"))
+        else:
+            self.bldrBtnRedo = tb.AddSimpleTool(
+                wx.ID_ANY,
+                redoBmp,
+                _translate("Redo [%s]") % keys['redo'],
+                _translate("Redo last action"))
+        tb.Bind(wx.EVT_TOOL, self.redo, self.bldrBtnRedo)
+
         tb.AddSeparator()
+
+        if 'phoenix' in wx.PlatformInfo:
+            item = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Monitor Center"),
+                monitorsBmp,
+                _translate("Monitor settings and calibration"))
+        else:
+            item = tb.AddSimpleTool(
+                wx.ID_ANY,
+                monitorsBmp,
+                _translate("Monitor Center"),
+                _translate("Monitor settings and calibration"))
+        tb.Bind(wx.EVT_TOOL, self.app.openMonitorCenter, id=item.GetId())
+
+        if 'phoenix' in wx.PlatformInfo:
+            item = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Experiment Settings"),
+                settingsBmp,
+                _translate("Experiment settings"))
+        else:
+            item = tb.AddSimpleTool(
+                wx.ID_ANY,
+                settingsBmp,
+                _translate("Experiment Settings"),
+                _translate("Experiment settings"))
+        tb.Bind(wx.EVT_TOOL, self.setExperimentSettings, item)
+
         tb.AddSeparator()
-        self.IDs.bldrBtnPrefs = tb.AddSimpleTool(wx.ID_ANY, preferencesBmp,
-                         _translate("Preferences"),
-                         _translate("Application preferences")).GetId()
-        tb.Bind(wx.EVT_TOOL, self.app.showPrefs, id=self.IDs.bldrBtnPrefs)
-        item = tb.AddSimpleTool(wx.ID_ANY, monitorsBmp,
-                         _translate("Monitor Center"),
-                         _translate("Monitor settings and calibration"))
-        tb.Bind(wx.EVT_TOOL, self.app.openMonitorCenter,
-                id=item.GetId())
-        tb.AddSeparator()
-        tb.AddSeparator()
-        item = tb.AddSimpleTool(wx.ID_ANY, settingsBmp,
-                         _translate("Experiment Settings"),
-                         _translate("Settings for this exp"))
-        tb.Bind(wx.EVT_TOOL, self.setExperimentSettings, id=item.GetId())
-        item = tb.AddSimpleTool(wx.ID_ANY, compileBmp,
-                         _translate("Compile Script [%s]") %
-                         keys['compileScript'],
-                         _translate("Compile to script"))
-        tb.Bind(wx.EVT_TOOL, self.compileScript, id=item.GetId())
-        self.IDs.bldrBtnRun = tb.AddSimpleTool(wx.ID_ANY, runBmp,
-                         _translate("Run [%s]") % keys['runScript'],
-                         _translate("Run experiment")).GetId()
-        tb.Bind(wx.EVT_TOOL, self.runFile, id=self.IDs.bldrBtnRun)
-        self.IDs.bldrBtnStop = tb.AddSimpleTool(wx.ID_ANY, stopBmp,
-                         _translate("Stop [%s]") % keys['stopScript'],
-                         _translate("Stop experiment")).GetId()
-        tb.Bind(wx.EVT_TOOL, self.stopFile, id=self.IDs.bldrBtnStop)
-        tb.EnableTool(self.IDs.bldrBtnStop, False)
+
+        if 'phoenix' in wx.PlatformInfo:
+            item = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Compile Script [%s]") % keys['compileScript'],
+                compileBmp,
+                _translate("Compile to script"))
+        else:
+            item = tb.AddSimpleTool(
+                wx.ID_ANY,
+                compileBmp,
+                _translate("Compile Script [%s]") % keys['compileScript'],
+                _translate("Compile to script"))
+        tb.Bind(wx.EVT_TOOL, self.compileScript, item)
+
+        if 'phoenix' in wx.PlatformInfo:
+            self.bldrBtnRun = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Run [%s]") % keys['runScript'],
+                runBmp,
+                _translate("Run experiment"))
+        else:
+            self.bldrBtnRun = tb.AddSimpleTool(
+                wx.ID_ANY,
+                runBmp,
+                _translate("Run [%s]") % keys['runScript'],
+                _translate("Run experiment"))
+        tb.Bind(wx.EVT_TOOL, self.runFile, self.bldrBtnRun)
+
+        if 'phoenix' in wx.PlatformInfo:
+            self.bldrBtnStop = tb.AddTool(
+                wx.ID_ANY,
+                _translate("Stop [%s]") % keys['stopScript'],
+                stopBmp,
+                _translate("Stop experiment"))
+        else:
+            self.bldrBtnStop = tb.AddSimpleTool(
+                wx.ID_ANY,
+                stopBmp,
+                _translate("Stop [%s]") % keys['stopScript'],
+                _translate("Stop experiment"))
+        tb.Bind(wx.EVT_TOOL, self.stopFile, self.bldrBtnStop)
+        self.toolbar.EnableTool(self.bldrBtnStop.Id, False)
+
+        self.toolbar.AddSeparator()
+        pavButtons = pavlovia_ui.toolbar.PavloviaButtons(self, toolbar=tb, tbSize=tbSize)
+        pavButtons.addPavloviaTools()
+        self.btnHandles.update(pavButtons.btnHandles)
+
+        # Finished setup. Make it happen
         tb.Realize()
 
     def makeMenus(self):
-        """ IDs are from app.wxIDs
+        """
+        Produces Menus for the Builder Frame
         """
 
         # ---Menus---#000000#FFFFFF-------------------------------------------
@@ -1236,23 +1385,23 @@ class BuilderFrame(wx.Frame):
             wx.ID_CLOSE,
             _translate("&Close file\t%s") % keys['close'],
             _translate("Close current experiment"))
-        wx.EVT_MENU(self, wx.ID_NEW, self.app.newBuilderFrame)
-        wx.EVT_MENU(self, exportMenu.GetId(), self.fileExport)
-        wx.EVT_MENU(self, wx.ID_SAVE, self.fileSave)
+        self.Bind(wx.EVT_MENU, self.app.newBuilderFrame, id=wx.ID_NEW)
+        self.Bind(wx.EVT_MENU, self.fileExport, id=exportMenu.GetId())
+        self.Bind(wx.EVT_MENU, self.fileSave, id=wx.ID_SAVE)
         menu.Enable(wx.ID_SAVE, False)
-        wx.EVT_MENU(self, wx.ID_SAVEAS, self.fileSaveAs)
-        wx.EVT_MENU(self, wx.ID_OPEN, self.fileOpen)
-        wx.EVT_MENU(self, wx.ID_CLOSE, self.commandCloseFrame)
+        self.Bind(wx.EVT_MENU, self.fileSaveAs, id=wx.ID_SAVEAS)
+        self.Bind(wx.EVT_MENU, self.fileOpen, id=wx.ID_OPEN)
+        self.Bind(wx.EVT_MENU, self.commandCloseFrame, id=wx.ID_CLOSE)
         item = menu.Append(
             wx.ID_PREFERENCES,
-            text=_translate("&Preferences\t%s") % keys['preferences'])
+            _translate("&Preferences\t%s") % keys['preferences'])
         self.Bind(wx.EVT_MENU, self.app.showPrefs, item)
 
         self.fileMenu.AppendSeparator()
         self.fileMenu.Append(wx.ID_EXIT,
                              _translate("&Quit\t%s") % keys['quit'],
                              _translate("Terminate the program"))
-        wx.EVT_MENU(self, wx.ID_EXIT, self.quit)
+        self.Bind(wx.EVT_MENU, self.quit, id=wx.ID_EXIT)
 
         # ------------- edit ------------------------------------
         self.editMenu = wx.Menu()
@@ -1262,12 +1411,14 @@ class BuilderFrame(wx.Frame):
                                       _translate("Undo\t%s") % keys['undo'],
                                       _translate("Undo last action"),
                                       wx.ITEM_NORMAL)
-        wx.EVT_MENU(self, wx.ID_UNDO, self.undo)
+        self.Bind(wx.EVT_MENU, self.undo, id=wx.ID_UNDO)
         self._redoLabel = menu.Append(wx.ID_REDO,
                                       _translate("Redo\t%s") % keys['redo'],
                                       _translate("Redo last action"),
                                       wx.ITEM_NORMAL)
-        wx.EVT_MENU(self, wx.ID_REDO, self.redo)
+        self.Bind(wx.EVT_MENU, self.redo, id=wx.ID_REDO)
+        menu.Append(wx.ID_PASTE, _translate("&Paste\t%s") % keys['paste'])
+        self.Bind(wx.EVT_MENU, self.paste, id=wx.ID_PASTE)
 
         # ---_tools ---#000000#FFFFFF-----------------------------------------
         self.toolsMenu = wx.Menu()
@@ -1276,119 +1427,118 @@ class BuilderFrame(wx.Frame):
         item = menu.Append(wx.ID_ANY,
                            _translate("Monitor Center"),
                            _translate("To set information about your monitor"))
-        wx.EVT_MENU(self, item.GetId(), self.app.openMonitorCenter)
+        self.Bind(wx.EVT_MENU, self.app.openMonitorCenter, item)
 
-        item =  menu.Append(wx.ID_ANY,
+        item = menu.Append(wx.ID_ANY,
                            _translate("Compile\t%s") % keys['compileScript'],
                            _translate("Compile the exp to a script"))
-        wx.EVT_MENU(self, item.GetId(), self.compileScript)
+        self.Bind(wx.EVT_MENU, self.compileScript, item)
         item = menu.Append(wx.ID_ANY,
-                    _translate("Run\t%s") % keys['runScript'],
-                    _translate("Run the current script"))
-        wx.EVT_MENU(self, item.GetId(), self.runFile)
+                           _translate("Run\t%s") % keys['runScript'],
+                           _translate("Run the current script"))
+        self.Bind(wx.EVT_MENU, self.runFile, item)
         item = menu.Append(wx.ID_ANY,
                            _translate("Stop\t%s") % keys['stopScript'],
                            _translate("Abort the current script"))
-        wx.EVT_MENU(self, item.GetId(), self.stopFile)
+        self.Bind(wx.EVT_MENU, self.stopFile, item)
 
         menu.AppendSeparator()
         item = menu.Append(wx.ID_ANY,
                            _translate("PsychoPy updates..."),
                            _translate("Update PsychoPy to the latest, or a "
-                               "specific, version"))
-        wx.EVT_MENU(self, item.GetId(), self.app.openUpdater)
+                                      "specific, version"))
+        self.Bind(wx.EVT_MENU, self.app.openUpdater, item)
         if hasattr(self.app, 'benchmarkWizard'):
             item = menu.Append(wx.ID_ANY,
                                _translate("Benchmark wizard"),
                                _translate("Check software & hardware, generate "
-                                   "report"))
-            wx.EVT_MENU(self, item.GetId(),
-                        self.app.benchmarkWizard)
+                                          "report"))
+            self.Bind(wx.EVT_MENU, self.app.benchmarkWizard, item)
 
         # ---_view---#000000#FFFFFF-------------------------------------------
         self.viewMenu = wx.Menu()
         menuBar.Append(self.viewMenu, _translate('&View'))
         menu = self.viewMenu
+
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Open Coder view\t%s") % 
-                               keys['switchToCoder'],
+                           _translate("&Open Coder view\t%s") % keys[
+                               'switchToCoder'],
                            _translate("Open a new Coder view"))
-        wx.EVT_MENU(self, item.GetId(), self.app.showCoder)
+        self.Bind(wx.EVT_MENU, self.app.showCoder, item)
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Toggle readme\t%s") % 
-                                      self.app.keys['toggleReadme'],
+                           _translate("&Toggle readme\t%s") % self.app.keys[
+                               'toggleReadme'],
                            _translate("Toggle Readme"))
-        wx.EVT_MENU(self, item.GetId(), self.toggleReadme)
+        self.Bind(wx.EVT_MENU, self.toggleReadme, item)
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Flow Larger\t%s") % 
-                                      self.app.keys['largerFlow'],
+                           _translate("&Flow Larger\t%s") % self.app.keys[
+                               'largerFlow'],
                            _translate("Larger flow items"))
-        wx.EVT_MENU(self, item.GetId(),
-                    self.flowPanel.increaseSize)
+        self.Bind(wx.EVT_MENU, self.flowPanel.increaseSize, item)
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Flow Smaller\t%s") % 
-                                      self.app.keys['smallerFlow'],
+                           _translate("&Flow Smaller\t%s") % self.app.keys[
+                               'smallerFlow'],
                            _translate("Smaller flow items"))
-        wx.EVT_MENU(self, item.GetId(),
-                    self.flowPanel.decreaseSize)
+        self.Bind(wx.EVT_MENU, self.flowPanel.decreaseSize, item)
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Routine Larger\t%s") % 
-                                      keys['largerRoutine'],
+                           _translate("&Routine Larger\t%s") % keys[
+                               'largerRoutine'],
                            _translate("Larger routine items"))
-        wx.EVT_MENU(self, item.GetId(),
-                    self.routinePanel.increaseSize)
+        self.Bind(wx.EVT_MENU, self.routinePanel.increaseSize, item)
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Routine Smaller\t%s") %
-                                      keys['smallerRoutine'],
+                           _translate("&Routine Smaller\t%s") % keys[
+                               'smallerRoutine'],
                            _translate("Smaller routine items"))
-        wx.EVT_MENU(self, item.GetId(),
-                    self.routinePanel.decreaseSize)
+        self.Bind(wx.EVT_MENU, self.routinePanel.decreaseSize, item)
 
         # ---_experiment---#000000#FFFFFF-------------------------------------
         self.expMenu = wx.Menu()
         menuBar.Append(self.expMenu, _translate('&Experiment'))
         menu = self.expMenu
         item = menu.Append(wx.ID_ANY,
-                           _translate("&New Routine\t%s") % 
-                                      keys['newRoutine'],
+                           _translate("&New Routine\t%s") % keys['newRoutine'],
                            _translate("Create a new routine (e.g. the trial "
                                       "definition)"))
-        wx.EVT_MENU(self, item.GetId(), self.addRoutine)
+        self.Bind(wx.EVT_MENU, self.addRoutine, item)
         item = menu.Append(wx.ID_ANY,
-                           _translate("&Copy Routine\t%s") % 
-                                      keys['copyRoutine'],
+                           _translate("&Copy Routine\t%s") % keys[
+                               'copyRoutine'],
                            _translate("Copy the current routine so it can be "
                                       "used in another exp"),
                            wx.ITEM_NORMAL)
-        wx.EVT_MENU(self, item.GetId(), self.onCopyRoutine)
+        self.Bind(wx.EVT_MENU, self.onCopyRoutine, item)
         item = menu.Append(wx.ID_ANY,
-                    _translate("&Paste Routine\t%s") % keys['pasteRoutine'],
-                    _translate("Paste the Routine into the current "
-                               "experiment"),
-                    wx.ITEM_NORMAL)
-        wx.EVT_MENU(self, item.GetId(), self.onPasteRoutine)
+                           _translate("&Paste Routine\t%s") % keys[
+                               'pasteRoutine'],
+                           _translate("Paste the Routine into the current "
+                                      "experiment"),
+                           wx.ITEM_NORMAL)
+        self.Bind(wx.EVT_MENU, self.onPasteRoutine, item)
         item = menu.Append(wx.ID_ANY,
-                    _translate("&Rename Routine\t%s") % keys['renameRoutine'],
-                    _translate("Change the name of this routine"))
-        wx.EVT_MENU(self, item.GetId(), self.renameRoutine)
+                           _translate("&Rename Routine\t%s") % keys[
+                               'renameRoutine'],
+                           _translate("Change the name of this routine"))
+        self.Bind(wx.EVT_MENU, self.renameRoutine, item)
         item = menu.Append(wx.ID_ANY,
-                    _translate("Paste Component\t%s") % keys['pasteCompon'],
-                    _translate("Paste the Component at bottom of the current "
+                           _translate("Paste Component\t%s") % keys[
+                               'pasteCompon'],
+                           _translate(
+                               "Paste the Component at bottom of the current "
                                "Routine"),
-                    wx.ITEM_NORMAL)
-        wx.EVT_MENU(self, item.GetId(), self.onPasteCompon)
+                           wx.ITEM_NORMAL)
+        self.Bind(wx.EVT_MENU, self.onPasteCompon, item)
         menu.AppendSeparator()
 
         item = menu.Append(wx.ID_ANY,
-                    _translate("Insert Routine in Flow"),
-                    _translate("Select one of your routines to be inserted"
+                           _translate("Insert Routine in Flow"),
+                           _translate(
+                               "Select one of your routines to be inserted"
                                " into the experiment flow"))
-        wx.EVT_MENU(self, item.GetId(),
-                    self.flowPanel.onInsertRoutine)
+        self.Bind(wx.EVT_MENU, self.flowPanel.onInsertRoutine, item)
         item = menu.Append(wx.ID_ANY,
-                    _translate("Insert Loop in Flow"),
-                    _translate("Create a new loop in your flow window"))
-        wx.EVT_MENU(self, item.GetId(), self.flowPanel.insertLoop)
+                           _translate("Insert Loop in Flow"),
+                           _translate("Create a new loop in your flow window"))
+        self.Bind(wx.EVT_MENU, self.flowPanel.insertLoop, item)
 
         # ---_demos---#000000#FFFFFF------------------------------------------
         # for demos we need a dict where the event ID will correspond to a
@@ -1398,46 +1548,59 @@ class BuilderFrame(wx.Frame):
         # unpack demos option
         menu = self.demosMenu
         item = menu.Append(wx.ID_ANY,
-                    _translate("&Unpack Demos..."),
-                    _translate("Unpack demos to a writable location (so that"
+                           _translate("&Unpack Demos..."),
+                           _translate(
+                               "Unpack demos to a writable location (so that"
                                " they can be run)"))
-        wx.EVT_MENU(self, item.GetId(), self.demosUnpack)
+        self.Bind(wx.EVT_MENU, self.demosUnpack, item)
         menu.AppendSeparator()
         # add any demos that are found in the prefs['demosUnpacked'] folder
         self.updateDemosMenu()
         menuBar.Append(self.demosMenu, _translate('&Demos'))
 
-        # ---_projects---#000000#FFFFFF-------------------------------------------
-        self.projectsMenu = projects.ProjectsMenu(parent=self)
-        menuBar.Append(self.projectsMenu, _translate("P&rojects"))
+        # ---_onlineStudies---#000000#FFFFFF-------------------------------------------
+        self.pavloviaMenu = pavlovia_ui.menu.PavloviaMenu(parent=self)
+        menuBar.Append(self.pavloviaMenu, _translate("Pavlovia.org"))
 
         # ---_help---#000000#FFFFFF-------------------------------------------
         self.helpMenu = wx.Menu()
         menuBar.Append(self.helpMenu, _translate('&Help'))
         menu = self.helpMenu
+
         item = menu.Append(wx.ID_ANY,
-                    _translate("&PsychoPy Homepage"),
-                    _translate("Go to the PsychoPy homepage"))
-        wx.EVT_MENU(self, item.GetId(), self.app.followLink)
+                           _translate("&PsychoPy Homepage"),
+                           _translate("Go to the PsychoPy homepage"))
+        self.Bind(wx.EVT_MENU, self.app.followLink, item)
         self.app.urls[item.GetId()] = self.app.urls['psychopyHome']
         item = menu.Append(wx.ID_ANY,
-                    _translate("&PsychoPy Builder Help"),
-                    _translate("Go to the online documentation for PsychoPy"
+                           _translate("&PsychoPy Builder Help"),
+                           _translate(
+                               "Go to the online documentation for PsychoPy"
                                " Builder"))
-        wx.EVT_MENU(self, item.GetId(), self.app.followLink)
+        self.Bind(wx.EVT_MENU, self.app.followLink, item)
         self.app.urls[item.GetId()] = self.app.urls['builderHelp']
 
         menu.AppendSeparator()
         menu.Append(wx.ID_ABOUT, _translate(
             "&About..."), _translate("About PsychoPy"))
-        wx.EVT_MENU(self, wx.ID_ABOUT, self.app.showAbout)
+        self.Bind(wx.EVT_MENU, self.app.showAbout, id=wx.ID_ABOUT)
+
+        menu.AppendSeparator()
+
+        item = menu.Append(wx.ID_ANY,
+                           _translate("&News..."),
+                           _translate("News"))
+        self.Bind(wx.EVT_MENU, self.app.showNews, id=item.GetId())
 
         self.SetMenuBar(menuBar)
 
     def commandCloseFrame(self, event):
+        """Defines Builder Frame Closing Event"""
         self.Close()
 
     def closeFrame(self, event=None, checkSave=True):
+        """Defines Frame closing behavior, such as checking for file
+           saving"""
         # close file first (check for save) but no need to update view
         okToClose = self.fileClose(updateViews=False, checkSave=checkSave)
 
@@ -1487,7 +1650,7 @@ class BuilderFrame(wx.Frame):
         # ISI = Static(self.exp, parentName=defaultName, name='ISI',
         #             startType='time (s)', startVal=0.0,
         #             stopType='duration (s)', stopVal=0.5)
-        #routine.addComponent(ISI)
+        # routine.addComponent(ISI)
         self.resetUndoStack()
         self.setIsModified(False)
         self.updateAllViews()
@@ -1505,7 +1668,9 @@ class BuilderFrame(wx.Frame):
             filename = dlg.GetPath()
         # did user try to open a script in Builder?
         if filename.endswith('.py'):
-            self.app.showCoder(fileList=[filename])
+            self.app.showCoder()  # ensures that a coder window exists
+            self.app.coder.setCurrentDoc(filename)
+            self.app.coder.setFileModified(False)
             return
         with WindowFrozen(ctrl=self):
             # try to pause rendering until all panels updated
@@ -1517,8 +1682,8 @@ class BuilderFrame(wx.Frame):
             try:
                 self.exp.loadFromXML(filename)
             except Exception:
-                print("Failed to load %s. Please send the following to"
-                      " the PsychoPy user list" % filename)
+                print(u"Failed to load {}. Please send the following to"
+                      u" the PsychoPy user list".format(filename))
                 traceback.print_exc()
                 logging.flush()
             self.resetUndoStack()
@@ -1531,6 +1696,11 @@ class BuilderFrame(wx.Frame):
         self.updateReadme()
         self.fileHistory.AddFileToHistory(filename)
         self.htmlPath = None  # so we won't accidentally save to other html exp
+        try:
+            self.project = pavlovia.getProject(filename)
+        except Exception as e:  # failed for
+            self.project = None
+            print(e)
 
     def fileSave(self, event=None, filename=None):
         """Save file, revert to SaveAs if the file hasn't yet been saved
@@ -1545,12 +1715,13 @@ class BuilderFrame(wx.Frame):
             self.fileHistory.AddFileToHistory(filename)
         self.setIsModified(False)
         # if export on save then we should have an html file to update
-        if self.htmlPath:
-            self.fileExport(filePath=self.htmlPath)
+        if self._getExportPref('on save') and os.path.split(filename)[0]:
+            self.filename = filename
+            self.fileExport(htmlPath=self.htmlPath)
         return True
 
     def fileSaveAs(self, event=None, filename=None):
-        """
+        """Defines Save File as Behavior
         """
         shortFilename = self.getShortFilename()
         expName = self.exp.getExpName()
@@ -1562,7 +1733,6 @@ class BuilderFrame(wx.Frame):
             filename = self.filename
         initPath, filename = os.path.split(filename)
 
-        os.getcwd()
         _w = "PsychoPy experiments (*.psyexp)|*.psyexp|Any file (*.*)|*"
         if sys.platform != 'darwin':
             _w += '.*'
@@ -1570,40 +1740,27 @@ class BuilderFrame(wx.Frame):
         returnVal = False
         dlg = wx.FileDialog(
             self, message=_translate("Save file as ..."), defaultDir=initPath,
-            defaultFile=filename, style=wx.SAVE, wildcard=wildcard)
+            defaultFile=filename, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+            wildcard=wildcard)
+
         if dlg.ShowModal() == wx.ID_OK:
             newPath = dlg.GetPath()
             # update exp name
-            # if the file already exists, query whether it should be
-            # overwritten (default = yes)
-            okToSave = True
-            if os.path.exists(newPath):
-                msg = _translate("File '%s' already exists.\n"
-                                 "    OK to overwrite?") % newPath
-                dg2 = dialogs.MessageDialog(self, message=msg, type='Warning')
-                ok = dg2.ShowModal()
-                if ok != wx.ID_YES:
-                    okToSave = False
-                try:
-                    dg2.destroy()
-                except Exception:
-                    pass
-            if okToSave:
-                # if user has not manually renamed experiment
-                if usingDefaultName:
-                    newShortName = os.path.splitext(
-                        os.path.split(newPath)[1])[0]
-                    self.exp.setExpName(newShortName)
-                # actually save
-                self.fileSave(event=None, filename=newPath)
-                self.filename = newPath
-                returnVal = 1
-            else:
-                print("'Save-as' canceled; existing file NOT overwritten.\n")
+            # if user has not manually renamed experiment
+            if usingDefaultName:
+                newShortName = os.path.splitext(
+                    os.path.split(newPath)[1])[0]
+                self.exp.setExpName(newShortName)
+            # actually save
+            self.fileSave(event=None, filename=newPath)
+            self.filename = newPath
+            returnVal = 1
+
         try:  # this seems correct on PC, but not on mac
             dlg.destroy()
         except Exception:
             pass
+
         self.updateWindowTitle()
         return returnVal
 
@@ -1611,20 +1768,27 @@ class BuilderFrame(wx.Frame):
         """Exports the script as an HTML file (PsychoJS library)
         """
         # get path if not given one
-        settingsHTMLpath = self.exp.settings.params['HTML path'].val
+        expPath, expName = os.path.split(self.filename)
         if htmlPath is None and self.exp.settings.params['HTML path']:
-            expPath = os.path.split(self.filename)[0]
-            htmlPath = os.path.join(expPath, settingsHTMLpath)
+            htmlPath = self._getHtmlPath(self.filename)
+
         # present dialog box
-        dlg = ExportFileDialog(self, wx.ID_ANY, title="Export HTML file",
-                               filePath=htmlPath)
-        retVal = dlg.ShowModal()
-        # then save the actual script
-        indexHTML = self.generateScript(experimentPath=htmlPath,
-                                     target="PsychoJS")
-        f = codecs.open(os.path.join(htmlPath,'index.html'), 'wb', 'utf-8')
-        f.write(indexHTML.getvalue())
-        f.close()
+        if htmlPath:
+            dlg = ExportFileDialog(self, wx.ID_ANY,
+                                   title=_translate("Export HTML file"),
+                                   filePath=htmlPath,
+                                   exp=self.exp)
+            export = dlg.exportOnSave
+            if self.exp.settings.params['exportHTML'].val == 'manually':
+                retVal = dlg.ShowModal()
+                self.exp.settings.params['exportHTML'].val = export.GetString(export.GetCurrentSelection())
+                if retVal != wx.ID_OK:  # User cancelled export
+                    return False
+
+            htmlPath = os.path.join(htmlPath, expName.replace('.psyexp', '.js'))
+            # then save the actual script
+            self.generateScript(experimentPath=htmlPath,
+                                target="PsychoJS")
 
     def getShortFilename(self):
         """returns the filename without path or extension
@@ -1658,10 +1822,14 @@ class BuilderFrame(wx.Frame):
             self.showReadme()
 
     def showReadme(self, evt=None, value=True):
+        """Shows Readme file
+        """
         if not self.readmeFrame.IsShown():
             self.readmeFrame.Show(value)
 
     def toggleReadme(self, evt=None):
+        """Toggles visibility of Readme file
+        """
         if self.readmeFrame is None:
             self.updateReadme()
             self.showReadme()
@@ -1742,7 +1910,7 @@ class BuilderFrame(wx.Frame):
         self.appData['frames'][self.filename] = frameData
         # save the display data only for those frames in the history:
         tmp2 = {}
-        for f in self.appData['frames'].keys():
+        for f in self.appData['frames']:
             if f in self.appData['fileHistory']:
                 tmp2[f] = self.appData['frames'][f]
         self.appData['frames'] = copy.copy(tmp2)
@@ -1757,11 +1925,15 @@ class BuilderFrame(wx.Frame):
         return 1
 
     def updateAllViews(self):
+        """Updates Flow Panel, Routine Panel, and Window Title simultaneously
+        """
         self.flowPanel.draw()
         self.routinePanel.redrawRoutines()
         self.updateWindowTitle()
 
     def updateWindowTitle(self, newTitle=None):
+        """Defines behavior to update window Title
+        """
         if newTitle is None:
             shortName = os.path.split(self.filename)[-1]
             newTitle = '%s - PsychoPy Builder' % (shortName)
@@ -1780,10 +1952,11 @@ class BuilderFrame(wx.Frame):
             newVal = self.getIsModified()
         else:
             self.isModified = newVal
-        self.toolbar.EnableTool(self.IDs.bldrBtnSave, newVal)
+        self.toolbar.EnableTool(self.bldrBtnSave.Id, newVal)
         self.fileMenu.Enable(wx.ID_SAVE, newVal)
 
     def getIsModified(self):
+        """Checks if changes were made"""
         return self.isModified
 
     def resetUndoStack(self):
@@ -1811,7 +1984,7 @@ class BuilderFrame(wx.Frame):
         # remove actions from after the current level
         if self.currentUndoLevel > 1:
             self.currentUndoStack = self.currentUndoStack[
-                :-(self.currentUndoLevel - 1)]
+                                    :-(self.currentUndoLevel - 1)]
             self.currentUndoLevel = 1
         # append this action
         self.currentUndoStack.append({'action': action, 'state': state})
@@ -1820,7 +1993,7 @@ class BuilderFrame(wx.Frame):
 
     def undo(self, event=None):
         """Step the exp back one level in the @currentUndoStack@ if possible,
-        and update the windows
+        and update the windows.
 
         Returns the final undo level (1=current, >1 for further in past)
         or -1 if redo failed (probably can't undo)
@@ -1838,8 +2011,8 @@ class BuilderFrame(wx.Frame):
 
     def redo(self, event=None):
         """Step the exp up one level in the @currentUndoStack@ if possible,
-        and update the windows
-
+        and update the windows.
+        
         Returns the final undo level (0=current, >0 for further in past)
         or -1 if redo failed (probably can't redo)
         """
@@ -1853,7 +2026,16 @@ class BuilderFrame(wx.Frame):
         self.setIsModified(newVal=True)  # update save icon if needed
         return self.currentUndoLevel
 
+    def paste(self, event=None):
+        """This receives paste commands for all child dialog boxes as well
+        """
+        foc = self.FindFocus()
+        if hasattr(foc, 'Paste'):
+            foc.Paste()
+
     def updateUndoRedo(self):
+        """Defines Undo and Redo commands for the window
+        """
         undoLevel = self.currentUndoLevel
         # check undo
         if undoLevel >= len(self.currentUndoStack):
@@ -1866,8 +2048,8 @@ class BuilderFrame(wx.Frame):
             fmt = {'action': action, 'key': self.app.keys['undo']}
             label = txt % fmt
             enable = True
-        self._undoLabel.SetText(label)
-        self.toolbar.EnableTool(self.IDs.bldrBtnUndo, enable)
+        self._undoLabel.SetItemLabel(label)
+        self.toolbar.EnableTool(self.bldrBtnUndo.Id, enable)
         self.editMenu.Enable(wx.ID_UNDO, enable)
 
         # check redo
@@ -1880,8 +2062,8 @@ class BuilderFrame(wx.Frame):
             fmt = {'action': action, 'key': self.app.keys['redo']}
             label = txt % fmt
             enable = True
-        self._redoLabel.SetText(label)
-        self.toolbar.EnableTool(self.IDs.bldrBtnRedo, enable)
+        self._redoLabel.SetItemLabel(label)
+        self.toolbar.EnableTool(self.bldrBtnRedo.Id, enable)
         self.editMenu.Enable(wx.ID_REDO, enable)
 
     def demosUnpack(self, event=None):
@@ -1896,7 +2078,7 @@ class BuilderFrame(wx.Frame):
             return -1  # user cancelled
         # ensure it's an empty dir:
         if os.listdir(unpackFolder) != []:
-            unpackFolder = os.path.join(unpackFolder, 'PsychoPy2 Demos')
+            unpackFolder = os.path.join(unpackFolder, 'PsychoPy3 Demos')
             if not os.path.isdir(unpackFolder):
                 os.mkdir(unpackFolder)
         mergeFolder(os.path.join(self.paths['demos'], 'builder'),
@@ -1906,6 +2088,8 @@ class BuilderFrame(wx.Frame):
         self.updateDemosMenu()
 
     def demoLoad(self, event=None):
+        """Defines Demo Loading Event
+        """
         fileDir = self.demos[event.GetId()]
         files = glob.glob(os.path.join(fileDir, '*.psyexp'))
         if len(files) == 0:
@@ -1914,41 +2098,32 @@ class BuilderFrame(wx.Frame):
             self.fileOpen(event=None, filename=files[0], closeCurrent=True)
 
     def updateDemosMenu(self):
+        """Updates Demos menu as needed
+        """
         unpacked = self.prefs['unpackedDemosDir']
         if not unpacked:
             return
         # list available demos
-        demoList = glob.glob(os.path.join(unpacked, '*'))
-        demoList.sort(key=lambda entry: entry.lower)
-        self.demos = {wx.NewId(): demoList[n]
+        demoList = sorted(glob.glob(os.path.join(unpacked, '*')))
+        self.demos = {wx.NewIdRef(): demoList[n]
                       for n in range(len(demoList))}
-        for thisID in self.demos.keys():
+        for thisID in self.demos:
             junk, shortname = os.path.split(self.demos[thisID])
             if (shortname.startswith('_') or
                     shortname.lower().startswith('readme.')):
                 continue  # ignore 'private' or README files
             self.demosMenu.Append(thisID, shortname)
-            wx.EVT_MENU(self, thisID, self.demoLoad)
+            self.Bind(wx.EVT_MENU, self.demoLoad, id=thisID)
 
     def runFile(self, event=None):
-        # get abs path of experiment so it can be stored with data at end of
-        # exp
-        expPath = self.filename
-        if expPath is None or expPath.startswith('untitled'):
-            ok = self.fileSave()
-            if not ok:
-                return  # save file before compiling script
-        self.exp.expPath = os.path.abspath(expPath)
-        # make new pathname for script file
+        """Gets absolute path of experiment so it can be stored with data at end of
+           the experiment run
+        """
+        if not os.path.exists(self.filename):
+            self.fileSave(self.filename)
         fullPath = self.filename.replace('.psyexp', '_lastrun.py')
+        self.generateScript(fullPath)  # Build script based on current version selected
 
-        script = self.generateScript(self.exp.expPath)
-        if not script:
-            return
-
-        f = codecs.open(fullPath, 'w', 'utf-8')
-        f.write(script.getvalue())
-        f.close()
         try:
             self.stdoutFrame.getText()
         except Exception:
@@ -1963,8 +2138,7 @@ class BuilderFrame(wx.Frame):
         print("\n" + (" Running: %s " % (fullPath)).center(80, "#"))
         self.stdoutFrame.lenLastRun = len(self.stdoutFrame.getText())
 
-        # self is the parent (which will receive an event when the process
-        # ends)
+        # self is the parent (which will receive an event when the process ends)
         self.scriptProcess = wx.Process(self)
         self.scriptProcess.Redirect()  # builder will receive the stdout/stdin
 
@@ -1973,8 +2147,10 @@ class BuilderFrame(wx.Frame):
             command = '"%s" -u "%s"' % (sys.executable, fullPath)
             # self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC,
             #   self.scriptProcess)
-            self.scriptProcessID = wx.Execute(
-                command, wx.EXEC_ASYNC | wx.EXEC_NOHIDE, self.scriptProcess)
+            if hasattr(wx, "EXEC_NOHIDE"):
+                _opts = wx.EXEC_ASYNC | wx.EXEC_NOHIDE  # that hid console!
+            else:
+                _opts = wx.EXEC_ASYNC | wx.EXEC_SHOW_CONSOLE
         else:
             # for unix this signifies a space in a filename
             fullPath = fullPath.replace(' ', '\ ')
@@ -1983,32 +2159,30 @@ class BuilderFrame(wx.Frame):
             # the quotes would break a unix system command
             command = '%s -u %s' % (pythonExec, fullPath)
             _opts = wx.EXEC_ASYNC | wx.EXEC_MAKE_GROUP_LEADER
-            self.scriptProcessID = wx.Execute(command, _opts,
-                                              self.scriptProcess)
-        self.toolbar.EnableTool(self.IDs.bldrBtnRun, False)
-        self.toolbar.EnableTool(self.IDs.bldrBtnStop, True)
+        # launch the command
+        self.scriptProcessID = wx.Execute(command, _opts, self.scriptProcess)
+        self.toolbar.EnableTool(self.bldrBtnRun.Id, False)
+        self.toolbar.EnableTool(self.bldrBtnStop.Id, True)
 
     def stopFile(self, event=None):
+        """Kills script processes"""
         self.app.terminateHubProcess()
         # try to kill it gently first
         success = wx.Kill(self.scriptProcessID, wx.SIGTERM)
         if success[0] != wx.KILL_OK:
             wx.Kill(self.scriptProcessID, wx.SIGKILL)  # kill it aggressively
-        self.onProcessEnded(event=None)
 
     def onProcessEnded(self, event=None):
         """The script/exp has finished running
         """
-        self.toolbar.EnableTool(self.IDs.bldrBtnRun, True)
-        self.toolbar.EnableTool(self.IDs.bldrBtnStop, False)
+        self.toolbar.EnableTool(self.bldrBtnRun.Id, True)
+        self.toolbar.EnableTool(self.bldrBtnStop.Id, False)
         # update the output window and show it
-        text = ""
+        text = u""
         if self.scriptProcess.IsInputAvailable():
-            stream = self.scriptProcess.GetInputStream()
-            text += stream.read()
+            text += extractText(self.scriptProcess.GetInputStream())
         if self.scriptProcess.IsErrorAvailable():
-            stream = self.scriptProcess.GetErrorStream()
-            text += stream.read()
+            text += extractText(self.scriptProcess.GetErrorStream())
         if len(text):
             # if some text hadn't yet been written (possible?)
             self.stdoutFrame.write(text)
@@ -2019,6 +2193,7 @@ class BuilderFrame(wx.Frame):
         # then return stdout to its org location
         sys.stdout = self.stdoutOrig
         sys.stderr = self.stderrOrig
+        self.scriptProcess.Destroy()
 
     def onCopyRoutine(self, event=None):
         """copy the current routine from self.routinePanel
@@ -2076,7 +2251,9 @@ class BuilderFrame(wx.Frame):
         self.app.showCoder()
         self.app.coder.gotoLine(filename, lineNumber)
 
-    def setExperimentSettings(self, event=None):
+    def setExperimentSettings(self, event=None, timeout=None):
+        """Defines ability to save experiment settings
+        """
         component = self.exp.settings
         # does this component have a help page?
         if hasattr(component, 'url'):
@@ -2086,15 +2263,20 @@ class BuilderFrame(wx.Frame):
         title = '%s Properties' % self.exp.getExpName()
         dlg = DlgExperimentProperties(frame=self, title=title,
                                       params=component.params,
-                                      helpUrl=helpUrl, order=component.order)
+                                      helpUrl=helpUrl, order=component.order,
+                                      timeout=timeout)
         if dlg.OK:
             self.addToUndoStack("EDIT experiment settings")
             self.setIsModified(True)
 
     def addRoutine(self, event=None):
+        """Defines ability to add routine in the routine panel
+        """
         self.routinePanel.createNewRoutine()
 
     def renameRoutine(self, name, event=None, returnName=True):
+        """Defines ability to rename routine in the routine panel
+        """
         # get notebook details
         currentRoutine = self.routinePanel.getCurrentPage()
         currentRoutineIndex = self.routinePanel.GetPageIndex(currentRoutine)
@@ -2102,7 +2284,7 @@ class BuilderFrame(wx.Frame):
             self.routinePanel.GetSelection()).routine
         oldName = routine.name
         msg = _translate("What is the new name for the Routine?")
-        dlg = wx.TextEntryDialog(self, message=msg,
+        dlg = wx.TextEntryDialog(self, message=msg, value=oldName,
                                  caption=_translate('Rename'))
         exp = self.exp
         if dlg.ShowModal() == wx.ID_OK:
@@ -2111,7 +2293,7 @@ class BuilderFrame(wx.Frame):
             # namespace:
             name = exp.namespace.makeValid(
                 name, prefix='routine')
-            if oldName in self.exp.routines.keys():
+            if oldName in self.exp.routines:
                 # Swap old with new names
                 self.exp.routines[oldName].name = name
                 self.exp.routines[name] = self.exp.routines.pop(oldName)
@@ -2124,42 +2306,145 @@ class BuilderFrame(wx.Frame):
                 self.flowPanel.draw()
 
     def compileScript(self, event=None):
-        script = self.generateScript(None)  # leave the experiment path blank
-        if not script:
-            return
-        # remove .psyexp and add .py
-        name = os.path.splitext(self.filename)[0] + ".py"
+        """Defines compile script button behavior"""
+        fullPath = self.filename.replace('.psyexp', '.py')
+        self.generateScript(fullPath)
         self.app.showCoder()  # make sure coder is visible
-        self.app.coder.fileNew(filepath=name)
-        self.app.coder.currentDoc.SetText(script.getvalue())
+        self.app.coder.fileNew(filepath=fullPath)
+        self.app.coder.fileReload(event=None, filename=fullPath)
 
     def generateScript(self, experimentPath, target="PsychoPy"):
-        self.app.prefs.app['debugMode'] = "debugMode"
-        if self.app.prefs.app['debugMode']:
-            return self.exp.writeScript(
-                expPath=experimentPath,
-                target=target)
-            # getting the trace-back is very helpful when debugging the app
+        """Generates python script from the current builder experiment"""
+        if self.getIsModified():
+            ok = self.fileSave(experimentPath)
+            if not ok:
+                return  # save file before compiling script
+        self.exp.expPath = os.path.abspath(experimentPath)
+
+        # Compile script from command line using version
+        compiler = 'psychopy.scripts.psyexpCompile'
+
+        if sys.platform == 'win32':  # get name of executable
+            pythonExec = sys.executable
+        else:
+            pythonExec = sys.executable.replace(' ', '\ ')
+
+        if not constants.PY3:  # encode path in Python2
+            filename = self.filename.encode(sys.getfilesystemencoding())
+            experimentPath = experimentPath.encode(sys.getfilesystemencoding())
+        else:
+            filename = self.filename
+
+        # run compile
+        cmd = [pythonExec, '-m', compiler, filename,
+               '-o', experimentPath]
+        # if version is not specified then don't touch useVersion at all
+        version = self.exp.settings.params['Use version'].val
+        if version not in [None, 'None', '', __version__]:
+            cmd.extend(['-v', version])
+            logging.info(' '.join(cmd))
+            out = subprocess.check_output(cmd)
+            if len(out):
+                out = out.decode('utf-8-sig').split('\n')
+                [print(line) for line in out] # so that any errors messages in compile are printed
+        else:
+            psyexpCompile.compileScript(infile=self.exp, version=None, outfile=experimentPath)
+
+    def _getHtmlPath(self, filename):
+        expPath = os.path.split(filename)[0]
+        if not os.path.isdir(expPath):
+            retVal = self.fileSave()
+            if retVal:
+                return self._getHtmlPath(self.filename)
+            else:
+                return False
+        htmlFolder = self.exp.settings.params['HTML path'].val
+        htmlPath = os.path.join(expPath, htmlFolder)
+        return htmlPath
+
+    def _getExportPref(self, pref):
+        """Returns True if pref matches exportHTML preference"""
+        if pref.lower() not in [prefs.lower() for prefs in self.exp.settings.params['exportHTML'].allowedVals]:
+            raise ValueError("'{}' is not an allowed value for {}".format(pref, 'exportHTML'))
+        exportHtml = str(self.exp.settings.params['exportHTML'].val).lower()
+        if exportHtml == pref.lower():
+            return True
+
+    def onPavloviaSync(self, evt=None):
+        if self._getExportPref('on sync'):
+            self.fileExport(htmlPath=self._getHtmlPath(self.filename))
+
+        self.enablePavloviaButton(['pavloviaSync', 'pavloviaRun'], False)
         try:
-            script = self.exp.writeScript(
-                expPath=experimentPath,
-                target=target)
-        except Exception as e:
-            try:
-                self.stdoutFrame.getText()
-            except Exception:
-                self.stdoutFrame = stdOutRich.StdOutFrame(
-                    parent=self, app=self.app, size=(700, 300))
-            self.stdoutFrame.write(
-                "Error when generating experiment script:\n")
-            self.stdoutFrame.write(str(e) + "\n")
-            self.stdoutFrame.Show()
-            self.stdoutFrame.Raise()
+            pavlovia_ui.syncProject(parent=self, project=self.project)
+            pavlovia.knownProjects.save()  # update projects.json
+        finally:
+            self.enablePavloviaButton(['pavloviaSync', 'pavloviaRun'], True)
+
+    def onPavloviaRun(self, evt=None):
+        if self._getExportPref('on save'):
+            self.fileSave()
+            pavlovia_ui.syncProject(parent=self, project=self.project,
+                                    closeFrameWhenDone=False)
+        elif self._getExportPref('on sync'):
+            self.fileExport(htmlPath=self._getHtmlPath(self.filename))
+            pavlovia_ui.syncProject(parent=self, project=self.project,
+                                    closeFrameWhenDone=False)
+        elif self._getExportPref('manually'):
+            # Check htmlpath and projects exists
+            noHtmlFolder = not os.path.isdir(self._getHtmlPath(self.filename))
+            noProject = not bool(pavlovia.getProject(self.filename))
+            if noHtmlFolder:
+                self.fileExport()
+            if noProject or noHtmlFolder:
+                pavlovia_ui.syncProject(parent=self, project=self.project,
+                                        closeFrameWhenDone=False)
+
+        if self.project:
+            self.project.pavloviaStatus = 'ACTIVATED'
+            url = "https://pavlovia.org/run/{}/html".format(self.project.id)
+            wx.LaunchDefaultBrowser(url)
+
+    def enablePavloviaButton(self, buttons, enable):
+        """
+        Enables or disables Pavlovia buttons.
+
+        Parameters
+        ----------
+        name: string, list
+            Takes single buttons 'pavloviaSync', 'pavloviaRun', 'pavloviaSearch', 'pavloviaUser',
+            or multiple buttons in string 'pavloviaSync, pavloviaRun',
+            or comma separated list of strings ['pavloviaSync', 'pavloviaRun', ...].
+        enable: bool
+            True enables and False disables the button
+        """
+        if isinstance(buttons, str):
+            buttons = buttons.split(',')
+        for button in buttons:
+            self.toolbar.EnableTool(self.btnHandles[button.strip(' ')].GetId(), enable)
+
+    def setPavloviaUser(self, user):
+        # TODO: update user icon on button to user avatar
+        pass
+
+    @property
+    def project(self):
+        """A PavloviaProject object if one is known for this experiment
+        """
+        if 'project' in self.__dict__ and self.__dict__['project']:
+            return self.__dict__['project']
+        elif self.filename and pavlovia.getProject(self.filename):
+            return pavlovia.getProject(self.filename)
+        else:
             return None
-        return script
+
+    @project.setter
+    def project(self, project):
+        self.__dict__['project'] = project
 
 
 class ReadmeFrame(wx.Frame):
+    """Defines construction of the Readme Frame"""
 
     def __init__(self, parent):
         """
@@ -2178,11 +2463,14 @@ class ReadmeFrame(wx.Frame):
         self.ctrl = wx.TextCtrl(self, style=wx.TE_MULTILINE)
 
     def onClose(self, evt=None):
+        """
+        Defines behavior on close of the Readme Frame
+        """
         self.parent.readmeFrame = None
         self.Destroy()
 
     def makeMenus(self):
-        """ IDs are from app.wxIDs"""
+        """Produces menus for the Readme Frame"""
 
         # ---Menus---#000000#FFFFFF-------------------------------------------
         menuBar = wx.MenuBar()
@@ -2195,14 +2483,16 @@ class ReadmeFrame(wx.Frame):
         menu.Append(wx.ID_CLOSE,
                     _translate("&Close readme\t%s") % keys['close'])
         item = menu.Append(-1,
-                    _translate("&Toggle readme\t%s") % keys['toggleReadme'],
-                    _translate("Toggle Readme"))
-        wx.EVT_MENU(self, item.GetId(), self.toggleVisible)
-        wx.EVT_MENU(self, wx.ID_SAVE, self.fileSave)
-        wx.EVT_MENU(self, wx.ID_CLOSE, self.toggleVisible)
+                           _translate("&Toggle readme\t%s") % keys[
+                               'toggleReadme'],
+                           _translate("Toggle Readme"))
+        self.Bind(wx.EVT_MENU, self.toggleVisible, item)
+        self.Bind(wx.EVT_MENU, self.fileSave, id=wx.ID_SAVE)
+        self.Bind(wx.EVT_MENU, self.toggleVisible, id=wx.ID_CLOSE)
         self.SetMenuBar(menuBar)
 
     def setFile(self, filename):
+        """Sets the readme file found with current builder experiment"""
         self.filename = filename
         self.expName = self.parent.exp.getExpName()
         # check we can read
@@ -2217,7 +2507,7 @@ class ReadmeFrame(wx.Frame):
             return False
         # attempt to open
         try:
-            f = codecs.open(filename, 'r', 'utf-8')
+            f = codecs.open(filename, 'r', 'utf-8-sig')
         except IOError as err:
             msg = ("Found readme file for %s and appear to have"
                    " permissions, but can't open")
@@ -2238,16 +2528,17 @@ class ReadmeFrame(wx.Frame):
         self.SetTitle("%s readme (%s)" % (self.expName, filename))
 
     def fileSave(self, evt=None):
+        """Defines save behavior for readme frame"""
         mtime = os.path.getmtime(self.filename)
         if self._fileLastModTime and mtime > self._fileLastModTime:
             logging.warning(
                 'readme file has been changed by another programme?')
         txt = self.ctrl.GetValue()
-        f = codecs.open(self.filename, 'w', 'utf-8')
-        f.write(txt)
-        f.close()
+        with codecs.open(self.filename, 'w', 'utf-8-sig') as f:
+            f.write(txt)
 
     def toggleVisible(self, evt=None):
+        """Defines visibility toggle for readme frame"""
         if self.IsShown():
             self.Hide()
         else:
@@ -2255,50 +2546,50 @@ class ReadmeFrame(wx.Frame):
 
 
 class ExportFileDialog(wx.Dialog):
-    def __init__(
-            self, parent, ID, title, size=wx.DefaultSize,
-            pos=wx.DefaultPosition, style=wx.DEFAULT_DIALOG_STYLE, filePath=None
-            ):
-
+    def __init__(self, parent, ID, title, size=wx.DefaultSize,
+                 pos=wx.DefaultPosition, style=wx.DEFAULT_DIALOG_STYLE,
+                 filePath=None, exp=None):
         wx.Dialog.__init__(self, parent, ID, title,
                            size=size, pos=pos, style=style)
         # Now continue with the normal construction of the dialog
         # contents
+        self.exp = exp
         sizer = wx.BoxSizer(wx.VERTICAL)
-
-        warning = wx.StaticText(
-            self, wx.ID_ANY,
-            "Warning, HTML outputs are under development.\n"
-            "They are here purely for testing at the moment.")
+        msg = _translate("Warning, HTML outputs are very new.\n"
+                         "Treat with caution (CHECK YOUR EXPERIMENT)!")
+        warning = wx.StaticText(self, wx.ID_ANY, msg)
         warning.SetForegroundColour((200, 0, 0))
         sizer.Add(warning, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
 
         box = wx.BoxSizer(wx.HORIZONTAL)
 
-        label = wx.StaticText(self, wx.ID_ANY, "Filepath:")
+        label = wx.StaticText(self, wx.ID_ANY, _translate("Filepath:"))
         box.Add(label, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        if len(filePath)>70:
-            filePath = filePath[:20]+"....."+filePath[-40:]
+        if len(filePath) > 70:
+            filePath = filePath[:20] + "....." + filePath[-40:]
         self.filePath = wx.StaticText(self, wx.ID_ANY, filePath, size=(500, -1))
         box.Add(self.filePath, 1, wx.ALIGN_CENTRE | wx.ALL, 5)
 
         sizer.Add(box, 0, wx.GROW | wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
 
+        # Set save on export HTML choice
         box = wx.BoxSizer(wx.HORIZONTAL)
-
-        self.exportOnSave = wx.CheckBox(self, wx.ID_ANY,
-                                        label="Continuously export on save")
-        self.exportOnSave.Disable()
-        self.exportOnSave.SetHelpText(
-            "[NOT implemented yet]"
-            "Tick this if you want the HTML file to export"
-            " (and overwrite) on every save of the experiment."
-            " Only works for THIS SESSION.")
-        box.Add(self.exportOnSave, 1, wx.ALIGN_CENTRE | wx.ALL, 5)
+        choices = ['on Save', 'on Sync', 'manually']
+        exportLabel = _translate("Select 'manually' to receive this alert when exporting HTML.\n"
+                                 "Click 'OK' to export HTML, or click 'Cancel' to return.")
+        self.exportOnSave = wx.Choice(self, wx.ID_ANY,
+                                      size=wx.DefaultSize,
+                                      choices=choices)
+        self.exportOnSave.SetSelection(choices.index(self.exp.settings.params['exportHTML']))
+        self.exportText = wx.StaticText(self, wx.ID_ANY, exportLabel)
+        self.exportOnSave.SetHelpText(exportLabel)
+        box.Add(self.exportOnSave, .5, wx.ALIGN_CENTRE | wx.ALL, 5)
+        box.Add(self.exportText, 1, wx.ALIGN_CENTRE | wx.ALL, 5)
 
         sizer.Add(box, 0, wx.GROW | wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
 
-        line = wx.StaticLine(self, wx.ID_ANY, size=(20, -1), style=wx.LI_HORIZONTAL)
+        line = wx.StaticLine(self, wx.ID_ANY, size=(20, -1),
+                             style=wx.LI_HORIZONTAL)
         sizer.Add(line, 0,
                   wx.GROW | wx.ALIGN_CENTER_VERTICAL | wx.RIGHT | wx.TOP, 5)
 
@@ -2317,3 +2608,15 @@ class ExportFileDialog(wx.Dialog):
         sizer.Add(btnsizer, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
 
         self.SetSizerAndFit(sizer)
+
+
+def extractText(stream):
+    """Take a byte stream (or any file object of type b?) and return
+
+    :param stream: stream from wx.Process or any byte stream from a file
+    :return: text converted to unicode ready for appending to wx text view
+    """
+    if constants.PY3:
+        return stream.read().decode('utf-8')
+    else:
+        return stream.read()

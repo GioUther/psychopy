@@ -1,24 +1,31 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """Conditions-file preview and mini-editor for the Builder
 """
 
-from __future__ import absolute_import, print_function, division
+from __future__ import absolute_import, division, print_function
 
+# from future import standard_library
+# standard_library.install_aliases()
+from builtins import str
+from builtins import range
 import os
 import sys
-import cPickle
+import pickle
 import wx
 from wx.lib.expando import ExpandoTextCtrl, EVT_ETC_LAYOUT_NEEDED
+from pkg_resources import parse_version
 
 from psychopy import gui
-from .. experiment import _valid_var_re, _nonalphanumeric_re
-from ...localization import _translate
+from psychopy.experiment.utils import valid_var_re, nonalphanumeric_re
+from psychopy.localization import _translate
+
+from psychopy.constants import PY3
 
 darkblue = wx.Colour(30, 30, 150, 255)
 darkgrey = wx.Colour(65, 65, 65, 255)
@@ -54,7 +61,7 @@ class DlgConditions(wx.Dialog):
     def __init__(self, grid=None, fileName=False, parent=None, title='',
                  trim=True, fixed=False, hasHeader=True, gui=True,
                  extraRows=0, extraCols=0,
-                 clean=True, pos=None, preview=True,
+                 clean=True, pos=wx.DefaultPosition, preview=True,
                  _restore=None, size=wx.DefaultSize,
                  style=wx.DEFAULT_DIALOG_STYLE | wx.DIALOG_NO_PARENT):
         self.parent = parent  # gets the conditionsFile info
@@ -91,9 +98,9 @@ class DlgConditions(wx.Dialog):
         if grid and type(grid) == list and type(grid[0]) == dict:
             conditions = grid[:]
             numCond, numParam = len(conditions), len(conditions[0])
-            grid = [conditions[0].keys()]
-            for i in xrange(numCond):
-                row = conditions[i].values()
+            grid = [list(conditions[0].keys())]
+            for i in range(numCond):
+                row = list(conditions[i].values())
                 grid.append(row)
             hasHeader = True  # keys of a dict are the header
         # ensure a sensible grid, or provide a basic default:
@@ -117,7 +124,7 @@ class DlgConditions(wx.Dialog):
         except wx._core.PyNoAppError:  # only needed during development?
             self.madeApp = True
             global app
-            if wx.version() < '2.9':
+            if parse_version(wx.__version__) < parse_version('2.9'):
                 app = wx.PySimpleApp()
             else:
                 app = wx.App(False)
@@ -149,10 +156,9 @@ class DlgConditions(wx.Dialog):
         # set length of input box as the longest in the column (bounded):
         self.colSizes = []
         for x in range(self.cols):
-            _size = [len(unicode(self.grid[y][x])) for y in range(self.rows)]
+            _size = [len(str(self.grid[y][x])) for y in range(self.rows)]
             self.colSizes.append(max([4] + _size))
-        self.colSizes = map(lambda x: min(20, max(10, x + 1)) * 8 + 30,
-                            self.colSizes)
+        self.colSizes = [min(20, max(10, x + 1)) * 8 + 30 for x in self.colSizes]
         self.inputTypes = []  # explicit, as selected by user
         self.inputFields = []  # values in fields
         self.data = []
@@ -235,8 +241,8 @@ class DlgConditions(wx.Dialog):
         lastRow = []
         for col in range(self.cols):
             # get the item, as unicode for display purposes:
-            if len(unicode(self.grid[row][col])):  # want 0, for example
-                item = unicode(self.grid[row][col])
+            if len(str(self.grid[row][col])):  # want 0, for example
+                item = str(self.grid[row][col])
             else:
                 item = u''
             # make a textbox:
@@ -254,7 +260,7 @@ class DlgConditions(wx.Dialog):
                     field.SetValue(self.colName(c))
                 field.SetForegroundColour(darkblue)  # dark blue
                 # or (self.parent and
-                if not _valid_var_re.match(field.GetValue()):
+                if not valid_var_re.match(field.GetValue()):
                     # self.parent.exp.namespace.exists(field.GetValue()) ):
                     # was always red when preview .xlsx file -- in
                     # namespace already is fine
@@ -292,8 +298,8 @@ class DlgConditions(wx.Dialog):
             else:
                 msg, enable = self.parent._checkName(name=name)
         else:
-            if (name and not _valid_var_re.match(name)
-                    or not _valid_var_re.match(event.GetString())):
+            if (name and not valid_var_re.match(name)
+                    or not valid_var_re.match(event.GetString())):
                 msg, enable = _translate(
                     "Name must be alpha-numeric or _, no spaces"), False
             else:
@@ -418,10 +424,10 @@ class DlgConditions(wx.Dialog):
                     elif thisType in ['file']:
                         exec("lastRow.append(repr(" + thisVal + "))")
                     else:
-                        exec("lastRow.append(" + unicode(thisVal) + ')')
+                        exec("lastRow.append(" + str(thisVal) + ')')
                 except ValueError as msg:
                     print('ValueError:', msg, '; using unicode')
-                    exec("lastRow.append(" + unicode(thisVal) + ')')
+                    exec("lastRow.append(" + str(thisVal) + ')')
                 except NameError as msg:
                     print('NameError:', msg, '; using unicode')
                     exec("lastRow.append(" + repr(thisVal) + ')')
@@ -452,8 +458,10 @@ class DlgConditions(wx.Dialog):
         if wx.version()[0] == '2':
             # data matrix on top, buttons below
             self.border = wx.FlexGridSizer(2, 1)
-        else:
+        elif wx.version()[0] == '3':
             self.border = wx.FlexGridSizer(4)
+        else:
+            self.border = wx.FlexGridSizer(4, 1, wx.Size(0,0))
         self.border.Add(self.sizer, proportion=1,
                         flag=wx.ALL | wx.EXPAND, border=8)
 
@@ -494,7 +502,7 @@ class DlgConditions(wx.Dialog):
             PREVIEW.Bind(wx.EVT_BUTTON, self.preview)
             buttons.Add(PREVIEW)
             buttons.AddSpacer(4)
-            self.SAVEAS = wx.Button(self, wx.SAVE, _translate("Save as"))
+            self.SAVEAS = wx.Button(self, wx.FD_SAVE, _translate("Save as"))
             self.SAVEAS.Bind(wx.EVT_BUTTON, self.saveAs)
             buttons.Add(self.SAVEAS)
             buttons.AddSpacer(8)
@@ -566,7 +574,7 @@ class DlgConditions(wx.Dialog):
                     newName = self.parent.exp.namespace.makeValid(
                         paramName, prefix='param')
                     adjustedNames = True
-            elif not _valid_var_re.match(paramName):
+            elif not valid_var_re.match(paramName):
                 msg, enable = _translate(
                     "Name must be alpha-numeric or _, no spaces"), False
                 newName = _nonalphanumeric_re.sub('_', newName)
@@ -598,7 +606,7 @@ class DlgConditions(wx.Dialog):
             if not fullPath.endswith('.pkl'):
                 fullPath += '.pkl'
             f = open(fullPath, 'w')
-            cPickle.dump(self.data, f)
+            pickle.dump(self.data, f)
             f.close()
             self.fileName = fullPath
             self.newFile = False
@@ -619,8 +627,15 @@ class DlgConditions(wx.Dialog):
             if fullPathList:
                 fileName = fullPathList[0]  # wx.MULTIPLE -> list
         if os.path.isfile(fileName) and fileName.endswith('.pkl'):
-            f = open(fileName)
-            contents = cPickle.load(f)
+            f = open(fileName, 'rb')
+            # Converting newline characters.
+            if PY3:
+                # 'b' is necessary in Python3 because byte object is 
+                # returned when file is opened in binary mode.
+                buffer = f.read().replace(b'\r\n',b'\n').replace(b'\r',b'\n')
+            else:
+                buffer = f.read().replace('\r\n','\n').replace('\r','\n')
+            contents = pickle.loads(buffer)
             f.close()
             if self.parent:
                 self.parent.conditionsFile = fileName

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -8,12 +8,11 @@ illustrating the different ways it can be used.
 No PsychoPy Window is created for this demo; results are
 printed to stdout.
 
-Inital Version: May 6th, 2013, Sol Simpson
+Initial Version: May 6th, 2013, Sol Simpson
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
-from __future__ import print_function  # for compatibility with python3
 from psychopy.iohub import launchHubServer
 
 def testWithNoKwargs():
@@ -34,7 +33,7 @@ def testWithNoKwargs():
     print(" ** PRESS A KEY TO CONTINUE.....")
 
     # Check for new events every 1/4 second.
-    # By using the io.wait() fucntion, the ioHub Process is checked for
+    # By using the io.wait() function, the ioHub Process is checked for
     # events every 50 msec or so, and they are cached in the PsychoPy process
     # until the next getEvents() call is made. On Windows, messagePump() is also
     # called periodically so that any Window you have created does not lock up.
@@ -126,7 +125,7 @@ def testEnabledDataStoreAutoSessionCode():
 
         psychopy_mon_name = 'testMonitor'
         exp_code = 'gap_endo_que'
-        sess_code = 'S_{0}'.format(long(time.mktime(time.localtime())))
+        sess_code = 'S_{0}'.format(int(time.mktime(time.localtime())))
         print('Current Session Code will be: ', sess_code)
 
         io = launchHubServer(psychopy_monitor_name=psychopy_mon_name,

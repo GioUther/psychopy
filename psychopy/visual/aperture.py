@@ -1,12 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """Restrict a stimulus visibility area to a basic shape or list of vertices.
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
+from __future__ import absolute_import, print_function
+
+from builtins import str
+from past.builtins import basestring
 import os
 
 # Ensure setting pyglet.options['debug_gl'] to False is done prior to any
@@ -92,7 +97,7 @@ class Aperture(MinimalStim, ContainerMixin):
             self.units = win.units
 
         # set vertices using shape, or default to a circle with nVerts edges
-        if hasattr(shape, 'lower'):
+        if hasattr(shape, 'lower') and not os.path.isfile(shape):
             shape = shape.lower()
         if shape is None or shape == 'circle':
             # NB: pentagon etc point upwards by setting x,y to be y,x
@@ -105,7 +110,7 @@ class Aperture(MinimalStim, ContainerMixin):
             vertices = [[0.5, -0.5], [0, 0.5], [-0.5, -0.5]]
         elif type(shape) in [tuple, list, numpy.ndarray] and len(shape) > 2:
             vertices = shape
-        elif type(shape) in [str, unicode]:
+        elif isinstance(shape, basestring):
             # is a string - see if it points to a file
             if os.path.isfile(shape):
                 self.__dict__['filename'] = shape
@@ -135,7 +140,7 @@ class Aperture(MinimalStim, ContainerMixin):
         wantLog = autoLog is None and self.win.autoLog
         self.__dict__['autoLog'] = autoLog or wantLog
         if self.autoLog:
-            logging.exp("Created %s = %s" % (self.name, str(self)))
+            logging.exp("Created {} = {}".format(self.name, self))
 
     def _reset(self):
         """Internal method to rebuild the shape - shouldn't be called by

@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """
 This module provides read / write access to the parallel port for
 Linux or Windows.
@@ -9,7 +12,7 @@ driver then, instead of using :class:`~psychopy.parallel.ParallelPort`
 shown below you can use one of the following as drop-in replacements,
 forcing the use of a specific driver:
 
-    - `psychopy.parallel.PParallelInpOut32`
+    - `psychopy.parallel.PParallelInpOut`
     - `psychopy.parallel.PParallelDLPortIO`
     - `psychopy.parallel.PParallelLinux`
 
@@ -20,31 +23,47 @@ There is also a legacy API which consists of the routines which are directly
 in this module. That API assumes you only ever want to use a single
 parallel port at once.
 """
+from __future__ import absolute_import, print_function
 
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 import sys
 from psychopy import logging
 
-# To make life easier, only try drivers which have a hope in heck of working
+# To make life easier, only try drivers which have a hope in heck of working.
+# Because hasattr() in connection to windll ends up in an OSError trying to
+# load 32bit drivers in a 64bit environment, different drivers defined in
+# the dictionary 'drivers' are tested.
+
 if sys.platform.startswith('linux'):
-    from _linux import PParallelLinux
+    from ._linux import PParallelLinux
     ParallelPort = PParallelLinux
 elif sys.platform == 'win32':
+    drivers = dict(inpout32=('_inpout', 'PParallelInpOut'),
+                   inpoutx64=('_inpout', 'PParallelInpOut'),
+                   dlportio=('_dlportio', 'PParallelDLPortIO'))
     from ctypes import windll
-    if hasattr(windll, 'inpout32'):
-        from _inpout32 import PParallelInpOut32
-        ParallelPort = PParallelInpOut32
-    elif hasattr(windll, 'dlportio'):
-        from _dlportio import PParallelDLPortIO
-        ParallelPort = PParallelDLPortIO
-    else:
+    from importlib import import_module
+    for key, val in drivers.items():
+        driver_name, class_name = val
+        try:
+            hasattr(windll, key)
+            ParallelPort = getattr(import_module('.'+driver_name, __name__),
+                                   class_name)
+            break
+        except (OSError, KeyError, NameError):
+            ParallelPort = None
+            continue
+    if ParallelPort is None:
         logging.warning("psychopy.parallel has been imported but no "
                         "parallel port driver found. Install either "
-                        "inpout32 or dlportio")
+                        "inpout32, inpoutx64 or dlportio")
 else:
     logging.warning("psychopy.parallel has been imported on a Mac "
                     "(which doesn't have a parallel port?)")
 
-    # OS X doesn't have a parallel port but write the class for doc purps
+    # macOS doesn't have a parallel port but write the class for doc purps
     class ParallelPort(object):
         """Class for read/write access to the parallel port on Windows & Linux
 

@@ -1,6 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 from __future__ import absolute_import, print_function
 
+from past.builtins import basestring
+from builtins import str
+from builtins import object
 import wx
 import wx.lib.scrolledpanel as scrolled
 import wx.lib.agw.flatnotebook as fnb
@@ -8,12 +13,14 @@ import platform
 import re
 import copy
 
-from . import localization, dialogs
-from psychopy import logging
-from .localization import _translate
+from . import dialogs
+from psychopy import logging, localization
+from psychopy.exceptions import DependencyError
+from psychopy.localization import _translate
+from pkg_resources import parse_version
 
 # this will be overridden by the size of the scrolled panel making the prefs
-dlgSize = (520, 600)
+dlgSize = (600, 500)
 
 # labels mappings for display:
 _localized = {
@@ -22,6 +29,7 @@ _localized = {
     'app': _translate('App'),
     'builder': "Builder",  # not localized
     'coder': "Coder",  # not localized
+    'hardware': _translate('Hardware'),
     'connections': _translate('Connections'),
     'keyBindings': _translate('Key bindings'),
     # pref labels:
@@ -32,8 +40,12 @@ _localized = {
     'paths': _translate('paths'),
     'audioLib': _translate("audio library"),
     'audioDriver': _translate("audio driver"),
+    'audioDevice': _translate("audio device"),
     'flac': _translate('flac audio compression'),
     'parallelPorts': _translate("parallel ports"),
+    'qmixConfiguration': _translate("Qmix configuration"),
+    'shutdownKey': _translate("shutdown key"),
+    'shutdownKeyModifiers': _translate("shutdown key modifier keys"),
     'showStartupTips': _translate("show start-up tips"),
     'largeIcons': _translate("large icons"),
     'defaultView': _translate("default view"),
@@ -51,7 +63,6 @@ _localized = {
     'showOutput': _translate('show output'),
     'reloadPrevFiles': _translate('reload previous files'),
     'preferredShell': _translate('preferred shell'),
-    'newlineConvention': _translate('newline convention'),
     'reloadPrevExp': _translate('reload previous exp'),
     'unclutteredNamespace': _translate('uncluttered namespace'),
     'componentsFolders': _translate('components folders'),
@@ -74,6 +85,7 @@ _localized = {
     'close': _translate('close'),
     'quit': _translate('quit'),
     'preferences': _translate('preferences'),
+    'exportHTML': _translate('export HTML'),
     'cut': _translate('cut'),
     'copy': _translate('copy'),
     'paste': _translate('paste'),
@@ -87,7 +99,10 @@ _localized = {
     'redo': _translate('redo'),
     'comment': _translate('comment'),
     'uncomment': _translate('uncomment'),
+    'toggle comment': _translate('toggle comment'),
     'fold': _translate('fold'),
+    'enlargeFont': _translate('enlarge Font'),
+    'shrinkFont': _translate('shrink Font'),
     'analyseCode': _translate('analyze code'),
     'compileScript': _translate('compile script'),
     'runScript': _translate('run script'),
@@ -98,8 +113,9 @@ _localized = {
     'newRoutine': _translate('new Routine'),
     'copyRoutine': _translate('copy Routine'),
     'pasteRoutine': _translate('paste Routine'),
-    'renameRoutine': _translate('rename Routine'),
+    'pasteCompon': _translate('paste Component'),
     'toggleOutputPanel': _translate('toggle output panel'),
+    'renameRoutine': _translate('rename Routine'),
     'switchToBuilder': _translate('switch to Builder'),
     'switchToCoder': _translate('switch to Coder'),
     'largerFlow': _translate('larger Flow'),
@@ -107,6 +123,13 @@ _localized = {
     'largerRoutine': _translate('larger routine'),
     'smallerRoutine': _translate('smaller routine'),
     'toggleReadme': _translate('toggle readme'),
+    'projectsLogIn': _translate('login to projects'),
+    'pavlovia_logIn': _translate('login to pavlovia'),
+    'OSF_logIn': _translate('login to OSF'),
+    'projectsSync': _translate('sync projects'),
+    'projectsFind': _translate('find projects'),
+    'projectsOpen': _translate('open projects'),
+    'projectsNew': _translate('new projects'),
     # pref wxChoice lists:
     'last': _translate('same as last session'),
     'both': _translate('both Builder & Coder'),
@@ -150,7 +173,7 @@ class PreferencesDlg(wx.Dialog):
 
         self.ctrls = {}
         sectionOrdering = ['general', 'app', 'builder', 'coder',
-                           'connections', 'keyBindings']
+                           'hardware', 'connections', 'keyBindings']
         for section in sectionOrdering:
             prefsPage = self.makePrefPage(parent=self.nb,
                                           sectionName=section,
@@ -183,12 +206,6 @@ class PreferencesDlg(wx.Dialog):
         btn.SetHelpText(_translate("Cancel any changes (to any panel)"))
         btn.Bind(wx.EVT_BUTTON, self.onCancel)
         btnsizer.AddButton(btn)
-        # apply
-        btn = wx.Button(self, wx.ID_APPLY, _translate('Apply'))
-        btn.SetHelpText(_translate("Apply these prefs (in all sections) and "
-                                   "continue"))
-        btn.Bind(wx.EVT_BUTTON, self.onApply)
-        btnsizer.AddButton(btn)
         # help
         btn = wx.Button(self, wx.ID_HELP, _translate('Help'))
         btn.SetHelpText(_translate("Get help on prefs"))
@@ -208,23 +225,19 @@ class PreferencesDlg(wx.Dialog):
         currentPane = self.nb.GetPageText(self.nb.GetSelection())
         # what the url should be called in psychopy.app.urls
         urlName = "prefs.%s" % currentPane
-        if urlName in self.app.urls.keys():
+        if urlName in self.app.urls:
             url = self.app.urls[urlName]
         else:
             # couldn't find that section - use default prefs
             url = self.app.urls["prefs"]
         self.app.followLink(url=url)
 
-    def onApply(self, event=None):
-        self.setPrefsFromCtrls()
-        self.app.prefs.pageCurrent = self.nb.GetSelection()
-        # don't set locale here; need to restart app anyway
-
     def onCancel(self, event=None):
         self.Destroy()
 
     def onOK(self, event=None):
-        self.onApply(event=event)
+        self.setPrefsFromCtrls()
+        self.app.prefs.pageCurrent = self.nb.GetSelection()
         self.Destroy()
 
     def makePrefPage(self, parent, sectionName, prefsSection, specSection):
@@ -232,7 +245,7 @@ class PreferencesDlg(wx.Dialog):
             parent, -1, size=(dlgSize[0] - 100, dlgSize[1] - 200))
         vertBox = wx.BoxSizer(wx.VERTICAL)
         # add each pref for this section
-        for prefName in specSection.keys():
+        for prefName in specSection:
             if prefName in ['version']:  # any other prefs not to show?
                 continue
             # allowModuleImports pref is handled by generateSpec.py
@@ -260,7 +273,8 @@ class PreferencesDlg(wx.Dialog):
 
             # create the actual controls
             self.ctrls[ctrlName] = ctrls = PrefCtrls(
-                parent=panel, name=pLabel, value=thisPref, spec=thisSpec)
+                parent=panel, name=prefName, value=thisPref,
+                spec=thisSpec, plabel=pLabel)
             ctrlSizer = wx.BoxSizer(wx.HORIZONTAL)
             ctrlSizer.Add(ctrls.nameCtrl, 0, wx.ALL, 5)
             ctrlSizer.Add(ctrls.valueCtrl, 0, wx.ALL, 5)
@@ -271,9 +285,9 @@ class PreferencesDlg(wx.Dialog):
             if len(hints):
                 # use only one comment line, from right above the pref
                 hint = hints[-1].lstrip().lstrip('#').lstrip()
-                ctrls.valueCtrl.SetToolTipString(_translate(hint))
+                ctrls.valueCtrl.SetToolTip(wx.ToolTip(_translate(hint)))
             else:
-                ctrls.valueCtrl.SetToolTipString('')
+                ctrls.valueCtrl.SetToolTip(wx.ToolTip(''))
 
             vertBox.Add(ctrlSizer)
         # size the panel and setup scrolling
@@ -288,8 +302,8 @@ class PreferencesDlg(wx.Dialog):
         # b) case-insensitive match for Cmd+ at start of string
         # c) reverse-map locale display names to canonical names (ja_JP)
         re_cmd2ctrl = re.compile('^Cmd\+', re.I)
-        for sectionName in self.prefsCfg.keys():
-            for prefName in self.prefsSpec[sectionName].keys():
+        for sectionName in self.prefsCfg:
+            for prefName in self.prefsSpec[sectionName]:
                 if prefName in ['version']:  # any other prefs not to show?
                     continue
                 ctrlName = sectionName + '.' + prefName
@@ -346,7 +360,7 @@ class PreferencesDlg(wx.Dialog):
 
 class PrefCtrls(object):
 
-    def __init__(self, parent, name, value, spec):
+    def __init__(self, parent, name, value, spec, plabel):
         """Create a set of ctrls for a particular preference entry
         """
         super(PrefCtrls, self).__init__()
@@ -358,7 +372,7 @@ class PrefCtrls(object):
         self.nameCtrl = self.valueCtrl = None
 
         _style = wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL
-        self.nameCtrl = wx.StaticText(self.parent, -1, name,
+        self.nameCtrl = wx.StaticText(self.parent, -1, plabel,
                                       size=(labelWidth, -1), style=_style)
         if type(value) == bool:
             # only True or False - use a checkbox
@@ -367,13 +381,19 @@ class PrefCtrls(object):
         elif spec.startswith('option') or name == 'audioDevice':
             if name == 'audioDevice':
                 options = copy.copy(value)
-                from psychopy import sound
-                if hasattr(sound, 'getDevices'):
-                    devs = sound.getDevices('output')
-                    for thisDevName in devs:
-                        if thisDevName not in options:
-                            options.append(thisDevName)
                 value = value[0]
+                try:
+                    # getting device name using sounddevice
+                    import sounddevice
+                    devices = sounddevice.query_devices()
+                    for device in devices:
+                        if device['max_output_channels'] > 0:
+                            # newline characters must be removed
+                            thisDevName = device['name'].replace('\r\n','')
+                            if thisDevName not in options:
+                                options.append(thisDevName)
+                except (ValueError, OSError, ImportError):
+                    pass
             else:
                 options = spec.replace("option(", "").replace("'", "")
                 # item -1 is 'default=x' from spec
@@ -386,13 +406,16 @@ class PrefCtrls(object):
                     labels.append(opt)
             self.valueCtrl = wx.Choice(self.parent, choices=labels)
             self.valueCtrl._choices = copy.copy(options)  # internal values
-            self.valueCtrl.SetSelection(options.index(value))
+            try:
+                self.valueCtrl.SetSelection(options.index(value))
+            except:
+                pass
         elif spec.startswith('list'):  # list
             valuestring = self.listToString(value)
             self.valueCtrl = wx.TextCtrl(self.parent, -1, valuestring,
                                          size=(valueWidth, -1))
         else:  # just use a string
-            self.valueCtrl = wx.TextCtrl(self.parent, -1, unicode(value),
+            self.valueCtrl = wx.TextCtrl(self.parent, -1, str(value),
                                          size=(valueWidth, -1))
 
     def _getCtrlValue(self, ctrl):
@@ -438,17 +461,13 @@ class PrefCtrls(object):
             l = '['
             for e in seq:
                 # if element is a sequence, call listToString recursively.
-                if hasattr(e, '__iter__'):
-                    en = listToString(e, depth - 1) + ','
+                if isinstance(e, basestring):
+                    en = "{!r}, ".format(e)  # using !r adds '' or u'' as needed
+                elif hasattr(e, '__iter__'):  # just tuples and lists (but in Py3 str has __iter__)
+                    en = self.listToString(e, depth - 1) + ','
                 else:
-                    e = e.replace('\\', '\\\\').replace("'", "\\'")
-                    # try str() first because we don't want to append "u" if
-                    # unnecessary.
-                    try:
-                        en = "'" + str(e) + "',"
-                    except Exception:  # unicode
-                        # "u" is necessary if string is unicode.
-                        en = "u'" + unicode(e) + "',"
+                    e = e.replace('\\', '\\\\').replace("'", "\\'")  # in path names?
+                    en = "{!r}, ".format(e)
                 l += en
             # remove unnecessary comma
             if l[-1] == ',':
@@ -458,9 +477,10 @@ class PrefCtrls(object):
             l = errmsg
         return l
 
+
 if __name__ == '__main__':
     from psychopy import preferences
-    if wx.version() < '2.9':
+    if parse_version(wx.__version__) < parse_version('2.9'):
         app = wx.PySimpleApp()
     else:
         app = wx.App(False)

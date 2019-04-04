@@ -1,10 +1,11 @@
-#!/usr/bin/env python2
-# encoding: utf-8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """Digital signal processing functions; pyo table, file, & sample conversions
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
+
 import os
 import sys
 import time
@@ -146,12 +147,12 @@ def tone(freq=440, sec=2, rate=44100, vol=.99):
 
 
 def apodize(data, ms=5, rate=44100):
-    """Apply a Hamming window (5ms) to reduce a sound's 'click' onset / offset.
+    """Apply a Hanning window (5ms) to reduce a sound's 'click' onset / offset.
     """
     hw_size = int(min(rate // (1000 / ms), len(data) // 15))
-    hamming_window = np.hamming(2 * hw_size + 1)
-    data[:hw_size] *= hamming_window[:hw_size]
-    data[-hw_size:] *= hamming_window[-hw_size:]
+    hanning_window = np.hanning(2 * hw_size + 1)
+    data[:hw_size] *= hanning_window[:hw_size]
+    data[-hw_size:] *= hanning_window[-hw_size:]
     return data
 
 
@@ -171,7 +172,7 @@ def _get_pyo_codes(fmt='', dtype='int16', file_out=''):
     if not fmt:
         dot_ext = os.path.splitext(file_out)[1]
         fmt = dot_ext.lower().strip('.')
-    if fmt in pyo_formats.keys():
+    if fmt in pyo_formats:
         file_fmt = pyo_formats[fmt]
     else:
         msg = 'format `{0}` not supported'.format(file_out)
@@ -182,7 +183,7 @@ def _get_pyo_codes(fmt='', dtype='int16', file_out=''):
     else:
         ok_dfmt = pyo_dtype
 
-    if dtype in ok_dfmt.keys():
+    if dtype in ok_dfmt:
         data_fmt = pyo_dtype[dtype]
     else:
         msg = 'data format `{0}` not supported for `{1}`'.format(

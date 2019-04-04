@@ -1,7 +1,13 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
+from __future__ import absolute_import, division, print_function
+
+from past.utils import old_div
 import sys
 import time
 from psychopy import logging
@@ -75,7 +81,7 @@ if importCtypesFailed == False:
 
 def syncSwapBuffers(n):
     """syncSwapBuffers(n)
-    if n==1 then buffers will sync, otherwise sync will bee turned off.
+    if n==1 then buffers will sync, otherwise sync will be turned off.
     """
     try:
         # set v to 1 to enable vsync, 0 to disable vsync
@@ -104,7 +110,7 @@ def getBusFreq():
 def rush(value=True, realtime=False):
     """Raise the priority of the current thread / process.
 
-    Win32 and OS X only so far - on linux use os.nice(niceIncrement)
+    Win32 and macOS only so far - on linux use os.nice(niceIncrement)
 
     Set with rush(True) or rush(False).
 
@@ -122,10 +128,10 @@ def rush(value=True, realtime=False):
         bus = getBusFreq()
         extendedPolicy = _timeConstraintThreadPolicy()
         # number of cycles in hz (make higher than frame rate)
-        extendedPolicy.period = bus / 160
-        extendedPolicy.computation = bus / 320  # half of that period
+        extendedPolicy.period = old_div(bus, 160)
+        extendedPolicy.computation = old_div(bus, 320)  # half of that period
         # max period that they should be carried out in
-        extendedPolicy.constrain = bus / 640
+        extendedPolicy.constrain = old_div(bus, 640)
         extendedPolicy.preemptible = 1
         extendedPolicy = getThreadPolicy(getDefault=True,
                                          flavour=THREAD_TIME_CONSTRAINT_POLICY)
@@ -265,9 +271,9 @@ def waitForVBL(screen=0, nFrames=1):
         return False
 
     scrID = getScreen(screen)
-    framePeriod = 1.0 / getRefreshRate(screen)
+    framePeriod = old_div(1.0, getRefreshRate(screen))
     if screen > 0:  # got multiple screens, check if they have same rate
-        mainFramePeriod = 1.0 / getRefreshRate(0)
+        mainFramePeriod = old_div(1.0, getRefreshRate(0))
         if mainFramePeriod != framePeriod:
             # CGDisplayBeamPosition is unpredictable in this case - usually
             # synced to the first monitor, but maybe better if 2 gfx cards?
@@ -287,7 +293,7 @@ def waitForVBL(screen=0, nFrames=1):
         # we have at least 5ms to go so can wait for 1ms
         while framePeriod * (top - beamPos) / top > 0.005:
             # time.sleep(0.0001)#actually it seems that time.sleep() waits too
-            # long on os x
+            # long on macOS
             beamPos = cocoa.CGDisplayBeamPosition(scrID)  # get current pos
         # now near top so poll continuously
         while beamPos < top:
@@ -308,7 +314,7 @@ def sendStayAwake():
 
     Added: v1.79.00
 
-    Currently supported on: windows, OS X
+    Currently supported on: windows, macOS
     """
     cocoa.UpdateSystemActivity(0)
 

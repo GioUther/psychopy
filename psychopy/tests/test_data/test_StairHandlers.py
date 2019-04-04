@@ -1,10 +1,20 @@
 """Test StairHandler"""
+
 from __future__ import division, print_function
-from psychopy import data, logging
+
+from builtins import range
+from builtins import object
 import numpy as np
 import shutil
-from tempfile import mkdtemp
+import json_tricks
+from tempfile import mkdtemp, mkstemp
 from operator import itemgetter
+import pytest
+
+from psychopy import data, logging
+from psychopy.tools.filetools import fromFile
+
+from psychopy.tests.utils import _travisTesting
 
 logging.console.setLevel(logging.DEBUG)
 DEBUG = False
@@ -14,8 +24,8 @@ np.random.seed(1000)
 
 class _BaseTestStairHandler(object):
     def setup(self):
-        self.tmpFile = mkdtemp(prefix='psychopy-tests-%s' %
-                               type(self).__name__)
+        self.tmp_dir = mkdtemp(prefix='psychopy-tests-%s' %
+                                      type(self).__name__)
 
         self.stairs = None
         self.responses = []
@@ -27,14 +37,14 @@ class _BaseTestStairHandler(object):
                 name='testExp',
                 savePickle=True,
                 saveWideText=True,
-                dataFileName=('%sx' % self.tmpFile)
+                dataFileName=('%sx' % self.tmp_dir)
         )
 
         if DEBUG:
-            print(self.tmpFile)
+            print(self.tmp_dir)
 
     def teardown(self):
-        shutil.rmtree(self.tmpFile)
+        shutil.rmtree(self.tmp_dir)
 
     def simulate(self):
         """
@@ -73,8 +83,8 @@ class _BaseTestStairHandler(object):
             # The first trial can never be a reversal.
             assert stairs.nReversals <= len(stairs.data) - 1
 
-            assert stairs.nReversals == len(stairs.reversalPoints)
-            assert stairs.nReversals == len(stairs.reversalIntensities)
+            assert len(stairs.reversalPoints) >= stairs.nReversals
+            assert len(stairs.reversalIntensities) >= stairs.nReversals
 
         if stairs.reversalPoints:
             assert stairs.reversalIntensities
@@ -307,6 +317,119 @@ class TestStairHandler(_BaseTestStairHandler):
         self.simulate()
         self.checkSimulationResults()
 
+    def test_nReversals(self):
+        start_val = 1
+        step_sizes = list(range(5))
+
+        staircase = data.StairHandler(startVal=start_val, stepSizes=step_sizes,
+                                      nReversals=None)
+        assert staircase.nReversals == len(step_sizes)
+
+        staircase = data.StairHandler(startVal=start_val, stepSizes=step_sizes,
+                                      nReversals=len(step_sizes) - 1)
+        assert staircase.nReversals == len(step_sizes)
+
+        staircase = data.StairHandler(startVal=start_val, stepSizes=step_sizes,
+                                      nReversals=len(step_sizes) + 1)
+        assert staircase.nReversals == len(step_sizes) + 1
+
+    def test_applyInitialRule_False(self):
+        start_val = 10
+        step_sizes = 2
+        staircase = data.StairHandler(startVal=start_val, stepSizes=step_sizes,
+                                      nReversals=2, nUp=1, nDown=2,
+                                      applyInitialRule=False,
+                                      stepType='lin')
+
+        responses = [0, 1, 1, 0]
+        intensities = [10, 12, 12, 10]
+
+        for r in responses:
+            try:
+                staircase.__next__()
+                staircase.addResponse(r)
+            except StopIteration:
+                break
+
+        assert staircase.data == responses
+        assert staircase.intensities == intensities
+
+    def test_comparison_equals(self):
+        s1 = data.StairHandler(5)
+        s2 = data.StairHandler(5)
+        assert s1 == s2
+
+    def test_comparison_equals_after_iteration(self):
+        s1 = data.StairHandler(5)
+        s2 = data.StairHandler(5)
+        s1.__next__()
+        s2.__next__()
+        assert s1 == s2
+
+    def test_comparison_not_equal(self):
+        s1 = data.StairHandler(5)
+        s2 = data.StairHandler(6)
+        assert s1 != s2
+
+    def test_comparison_not_equal_after_iteration(self):
+        s1 = data.StairHandler(5)
+        s2 = data.StairHandler(6)
+        s1.__next__()
+        s2.__next__()
+        assert s1 != s2
+
+    def test_json_dump(self):
+        s = data.StairHandler(5)
+        dump = s.saveAsJson()
+
+        s.origin = ''
+        assert s == json_tricks.loads(dump)
+
+    def test_json_dump_with_data(self):
+        s = data.StairHandler(5)
+        s.addResponse(1)
+        s.addOtherData('foo', 'bar')
+        dump = s.saveAsJson()
+
+        s.origin = ''
+        assert s == json_tricks.loads(dump)
+
+    def test_json_dump_after_iteration(self):
+        s = data.StairHandler(5)
+        s.__next__()
+        dump = s.saveAsJson()
+
+        s.origin = ''
+        assert s == json_tricks.loads(dump)
+
+    def test_json_dump_with_data_after_iteration(self):
+        s = data.StairHandler(5)
+        s.addResponse(1)
+        s.addOtherData('foo', 'bar')
+        s.__next__()
+        dump = s.saveAsJson()
+
+        s.origin = ''
+        assert s == json_tricks.loads(dump)
+
+    def test_json_dump_to_file(self):
+        s = data.StairHandler(5)
+        _, path = mkstemp(dir=self.tmp_dir, suffix='.json')
+        s.saveAsJson(fileName=path, fileCollisionMethod='overwrite')
+
+    def test_json_dump_and_reopen_file(self):
+        s = data.StairHandler(5)
+        s.addResponse(1)
+        s.addOtherData('foo', 'bar')
+        s.__next__()
+
+        _, path = mkstemp(dir=self.tmp_dir, suffix='.json')
+        s.saveAsJson(fileName=path, fileCollisionMethod='overwrite')
+        s.origin = ''
+
+        s_loaded = fromFile(path)
+        assert s == s_loaded
+
 
 class TestQuestHandler(_BaseTestStairHandler):
     """
@@ -330,6 +453,8 @@ class TestQuestHandler(_BaseTestStairHandler):
             minVal=minVal, maxVal=maxVal
         )
 
+        self.stairs.nReversals = None
+
         self.responses = makeBasicResponseCycles(
             cycles=3, nCorrect=2, nIncorrect=2, length=10
         )
@@ -348,6 +473,9 @@ class TestQuestHandler(_BaseTestStairHandler):
         self.simulate()
         self.checkSimulationResults()
 
+        assert self.stairs.startVal == startVal
+        assert self.stairs.startValSd == startValSd
+
         assert np.allclose(self.stairs.mean(), mean)
         assert np.allclose(self.stairs.mode(), mode)
         assert np.allclose(self.stairs.quantile(), quantile)
@@ -360,6 +488,224 @@ class TestQuestHandler(_BaseTestStairHandler):
         )
         assert self.stairs._quest.x[0] == -range/2
         assert self.stairs._quest.x[-1] == range/2
+
+    def test_comparison_equals(self):
+        q1 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=1)
+        q2 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=1)
+        assert q1 == q2
+
+    def test_comparison_equals_after_iteration(self):
+        q1 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=1)
+        q2 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=1)
+        q1.__next__()
+        q2.__next__()
+        assert q1 == q2
+
+    def test_comparison_not_equal(self):
+        q1 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=1)
+        q2 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=2)
+        assert q1 != q2
+
+    def test_comparison_not_equal_after_iteration(self):
+        q1 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=1)
+        q2 = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                               nTrials=20, minVal=0, maxVal=2)
+        q1.__next__()
+        q2.__next__()
+        assert q1 != q2
+
+    def test_json_dump(self):
+        q = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                              nTrials=20, minVal=0, maxVal=1)
+        dump = q.saveAsJson()
+
+        q.origin = ''
+        assert q == json_tricks.loads(dump)
+
+    def test_json_dump_with_data(self):
+        q = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                              nTrials=20, minVal=0, maxVal=1)
+        q.addResponse(1)
+        q.addOtherData('foo', 'bar')
+        dump = q.saveAsJson()
+
+        q.origin = ''
+        assert q == json_tricks.loads(dump)
+
+    def test_json_dump_after_iteration(self):
+        q = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                              nTrials=20, minVal=0, maxVal=1)
+        q.__next__()
+        dump = q.saveAsJson()
+
+        q.origin = ''
+        assert q == json_tricks.loads(dump)
+
+    def test_json_dump_with_data_after_iteration(self):
+        q = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                              nTrials=20, minVal=0, maxVal=1)
+        q.addResponse(1)
+        q.addOtherData('foo', 'bar')
+        q.__next__()
+        dump = q.saveAsJson()
+
+        q.origin = ''
+        assert q == json_tricks.loads(dump)
+
+    def test_json_dump_to_file(self):
+        _, path = mkstemp(dir=self.tmp_dir, suffix='.json')
+        q = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                              nTrials=20, minVal=0, maxVal=1)
+        q.saveAsJson(fileName=path, fileCollisionMethod='overwrite')
+
+    def test_json_dump_and_reopen_file(self):
+        q = data.QuestHandler(0.5, 0.2, pThreshold=0.63, gamma=0.01,
+                              nTrials=20, minVal=0, maxVal=1)
+        q.addResponse(1)
+        q.addOtherData('foo', 'bar')
+        q.__next__()
+
+        _, path = mkstemp(dir=self.tmp_dir, suffix='.json')
+        q.saveAsJson(fileName=path, fileCollisionMethod='overwrite')
+        q.origin = ''
+
+        q_loaded = fromFile(path)
+        assert q == q_loaded
+
+
+class TestPsiHandler(_BaseTestStairHandler):
+    def test_comparison_equals(self):
+        p1 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.01)
+
+        p2 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.01)
+
+        assert p1 == p2
+
+    def test_comparison_equals_after_iteration(self):
+        p1 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.01)
+
+        p2 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.01)
+
+        p1.__next__()
+        p2.__next__()
+        assert p1 == p2
+
+    def test_comparison_not_equal(self):
+        p1 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.01)
+
+        p2 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.001)
+
+        assert p1 != p2
+
+    def test_comparison_not_equal_after_iteration(self):
+        p1 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.01)
+
+        p2 = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                             alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                             intensPrecision=0.1, alphaPrecision=0.1,
+                             betaPrecision=0.1, delta=0.001)
+
+        p1.__next__()
+        p2.__next__()
+        assert p1 != p2
+
+    def test_json_dump(self):
+        p = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                            alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                            intensPrecision=1, alphaPrecision=1,
+                            betaPrecision=0.5, delta=0.01)
+        dump = p.saveAsJson()
+
+        p.origin = ''
+        assert p == json_tricks.loads(dump)
+
+    def test_json_dump_with_data(self):
+        p = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                            alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                            intensPrecision=1, alphaPrecision=1,
+                            betaPrecision=0.5, delta=0.01)
+        p.addResponse(1)
+        p.addOtherData('foo', 'bar')
+        dump = p.saveAsJson()
+
+        p.origin = ''
+        assert p == json_tricks.loads(dump)
+
+    def test_json_dump_after_iteration(self):
+        p = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                            alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                            intensPrecision=1, alphaPrecision=1,
+                            betaPrecision=0.5, delta=0.01)
+        p.__next__()
+        dump = p.saveAsJson()
+
+        p.origin = ''
+        assert p == json_tricks.loads(dump)
+
+    def test_json_dump_with_data_after_iteration(self):
+        p = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                            alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                            intensPrecision=1, alphaPrecision=1,
+                            betaPrecision=0.5, delta=0.01)
+        p.addResponse(1)
+        p.addOtherData('foo', 'bar')
+        p.__next__()
+        dump = p.saveAsJson()
+
+        p.origin = ''
+        assert p == json_tricks.loads(dump)
+
+    def test_json_dump_to_file(self):
+        _, path = mkstemp(dir=self.tmp_dir, suffix='.json')
+        p = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                            alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                            intensPrecision=1, alphaPrecision=1,
+                            betaPrecision=0.5, delta=0.01)
+        p.saveAsJson(fileName=path, fileCollisionMethod='overwrite')
+
+    def test_json_dump_and_reopen_file(self):
+        p = data.PsiHandler(nTrials=10, intensRange=[0.1, 10],
+                            alphaRange=[0.1, 10], betaRange=[0.1, 3],
+                            intensPrecision=1, alphaPrecision=1,
+                            betaPrecision=0.5, delta=0.01)
+        p.addResponse(1)
+        p.addOtherData('foo', 'bar')
+        p.__next__()
+
+        _, path = mkstemp(dir=self.tmp_dir, suffix='.json')
+        p.saveAsJson(fileName=path, fileCollisionMethod='overwrite')
+        p.origin = ''
+
+        p_loaded = fromFile(path)
+        assert p == p_loaded
 
 
 class TestMultiStairHandler(_BaseTestMultiStairHandler):
@@ -398,8 +744,8 @@ class TestMultiStairHandler(_BaseTestMultiStairHandler):
         }
 
         self.conditions = [
-            dict({'label': 'staircase_0'}.items() + conditions.items()),
-            dict({'label': 'staircase_1'}.items() + conditions.items()),
+            dict(list({'label': 'staircase_0'}.items()) + list(conditions.items())),
+            dict(list({'label': 'staircase_1'}.items()) + list(conditions.items())),
         ]
 
         self.stairs = data.MultiStairHandler(
@@ -439,7 +785,6 @@ class TestMultiStairHandler(_BaseTestMultiStairHandler):
 
         assert (self.stairs.staircases[0].data ==
                 self.stairs.staircases[1].data)
-
 
 
 def makeBasicResponseCycles(cycles=10, nCorrect=4, nIncorrect=4,

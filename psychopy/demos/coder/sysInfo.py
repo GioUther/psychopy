@@ -1,4 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from __future__ import print_function  # for compatibility with python3
 
 from pyglet.gl import gl_info, GLint, glGetIntegerv, GL_MAX_ELEMENTS_VERTICES
@@ -13,7 +15,7 @@ print("\nSystem info:")
 print(platform.platform())
 if sys.platform == 'darwin':
     OSXver, junk, architecture = platform.mac_ver()
-    print("OS X %s running on %s" % (OSXver, architecture))
+    print("macOS %s running on %s" % (OSXver, architecture))
 
 print("\nPython info")
 print(sys.executable)

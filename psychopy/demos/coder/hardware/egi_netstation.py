@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -8,7 +8,7 @@ Note that egi pynetstation can also be used in a multi-threaded form.
 See the pynetstation documentation for further information.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
 # Set up:
 

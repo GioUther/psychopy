@@ -1,4 +1,5 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """This stores variables that are needed globally through the visual package.
 
@@ -14,6 +15,8 @@ Note that if you import using::
 
 then if the variable changes your copy won't!
 """
+
+from __future__ import absolute_import, division, print_function
 
 currWindow = None
 # for logging purposes, how many times have we resized an image:

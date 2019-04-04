@@ -1,5 +1,4 @@
 import collections
-from contextlib import nested
 import psychopy.hardware as hw
 import pytest
 try:
@@ -13,6 +12,21 @@ except Exception:
 else:
     def require_mock(fn):
         return fn
+
+try:
+    from contextlib import nested  # Python 2
+except ImportError:
+    from contextlib import ExitStack, contextmanager
+
+    @contextmanager
+    def nested(*contexts):
+        """
+        Reimplementation of nested in python 3.
+        """
+        with ExitStack() as stack:
+            for ctx in contexts:
+                stack.enter_context(ctx)
+            yield contexts
 
 def globMock(expr):
     if "?" in expr:
@@ -38,7 +52,7 @@ def test_getLinuxSerialPorts():
     should_have = ["/dev/ttyS1","/dev/ttyACM1","/dev/ttyUSB1"]
     with nested(mock.patch("sys.platform","linux2"),
                 mock.patch("glob.iglob",globMock)):
-       assertPorts(should_have,hw.getSerialPorts())
+        assertPorts(should_have,hw.getSerialPorts())
 
 @require_mock
 def test_getDarwinSerialPorts():

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -18,7 +18,7 @@ Or you can load a specific calibration of that monitor:
 More info is available at http: //www.psychopy.org/api/monitors.html
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
 from psychopy import monitors
 

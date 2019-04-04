@@ -1,4 +1,6 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 eye_tracker/run.py
 
@@ -9,8 +11,11 @@ with the Eye Tracker Technology chosen at the start of the demo via a
 drop down list. Exact same demo script is used regardless of the 
 Eye Tracker hardware used.
 
-Inital Version: May 6th, 2013, Sol Simpson
+Initial Version: May 6th, 2013, Sol Simpson
 """
+
+from __future__ import absolute_import, division, print_function
+
 from psychopy import visual
 from psychopy.data import TrialHandler,importConditions
 from psychopy.iohub import (EventConstants, EyeTrackerConstants, 
@@ -104,7 +109,7 @@ class ExperimentRuntime(ioHubExperimentRuntime):
         self.hub.clearEvents('all')
         t=0
         for trial in trials:    
-            # Update the instuction screen text...
+            # Update the instruction screen text...
             #            
             instuction_text="Press Space Key To Start Trial %d"%t
             instructions_text_stim.setText(instuction_text)        
@@ -184,7 +189,7 @@ class ExperimentRuntime(ioHubExperimentRuntime):
             # Save the Experiment Condition Variable Data for this trial to the
             # ioDataStore.
             #
-            self.hub.addRowToConditionVariableTable(trial.values())          
+            self.hub.addRowToConditionVariableTable(list(trial.values()))          
             self.hub.clearEvents('all')
             t+=1
 
@@ -192,7 +197,7 @@ class ExperimentRuntime(ioHubExperimentRuntime):
         #
         tracker.setConnectionState(False)
 
-        # Update the instuction screen text...
+        # Update the instruction screen text...
         #            
         instuction_text="Press Any Key to Exit Demo"
         instructions_text_stim.setText(instuction_text)        
@@ -250,7 +255,7 @@ if __name__ == "__main__":
         if not infoDlg.OK:
             return -1 
 
-        while dlg_info.values()[0] == u'Select' and infoDlg.OK:
+        while list(dlg_info.values())[0] == u'Select' and infoDlg.OK:
                 dlg_info=dict(info)
                 infoDlg = gui.DlgFromDict(dictionary=dlg_info, title='SELECT Eye Tracker To Continue...')
    
@@ -261,7 +266,7 @@ if __name__ == "__main__":
                                                        'iohub_config.yaml.part'))
                                                        
         eyetrack_config_file=os.path.normcase(os.path.join(configurationDirectory,
-                                eye_tracker_config_files[dlg_info.values()[0]]))
+                                eye_tracker_config_files[list(dlg_info.values())[0]]))
 
         combined_config_file_name=os.path.normcase(os.path.join(configurationDirectory,
                                                                 'iohub_config.yaml'))
@@ -271,7 +276,7 @@ if __name__ == "__main__":
 
         
         runtime=ExperimentRuntime(configurationDirectory, "experiment_config.yaml")    
-        runtime.start((dlg_info.values()[0],))
+        runtime.start((list(dlg_info.values())[0],))
 
 
     # Get the current directory, using a method that does not rely on __FILE__

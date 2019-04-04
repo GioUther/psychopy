@@ -1,20 +1,26 @@
 """Test PsychoPy sound.py using pyo backend
 """
+from __future__ import division
 
-from psychopy import prefs, core
+from builtins import object
+from past.utils import old_div
 
 import pytest
 import shutil, os
 from tempfile import mkdtemp
-from psychopy.tests import utils  # TESTS_DATA_PATH
-from psychopy import sound
-origSoundPref = prefs.general['audioLib']
+import numpy as np
 
-import numpy
+from psychopy import prefs, core
+from psychopy.tests import utils
+from psychopy import sound
+from psychopy.constants import PY3
+
+if PY3:
+    from importlib import reload
+
+origSoundPref = prefs.hardware['audioLib']
 
 # py.test --cov-report term-missing --cov sound.py tests/test_sound/test_sound_pyo.py
-
-from psychopy.tests.utils import TESTS_PATH, TESTS_DATA_PATH
 
 
 class TestSoundDevice(object):
@@ -23,7 +29,7 @@ class TestSoundDevice(object):
     @classmethod
     def setup_class(self):
         self.contextName='sounddevice'
-        prefs.general['audioLib'] = ['sounddevice']
+        prefs.hardware['audioLib'] = ['sounddevice']
         reload(sound)
         self.tmp = mkdtemp(prefix='psychopy-tests-sound')
 
@@ -32,12 +38,12 @@ class TestSoundDevice(object):
 
     @classmethod
     def teardown_class(self):
-        prefs.general['audioLib'] = origSoundPref
+        prefs.hardware['audioLib'] = origSoundPref
         if hasattr(self, 'tmp'):
             shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_init(self):
-        for note in ['A', 440, '440', [1,2,3,4], numpy.array([1,2,3,4])]:
+        for note in ['A', 440, '440', [1,2,3,4], np.array([1,2,3,4])]:
             sound.Sound(note, secs=.1)
         with pytest.raises(ValueError):
             sound.Sound('this is not a file name')
@@ -45,7 +51,7 @@ class TestSoundDevice(object):
             sound.Sound(-1) #negative frequency makes no sense
 
         points = 100
-        snd = numpy.ones(points) / 20  # noqa
+        snd = old_div(np.ones(points), 20)  # noqa
 
         s = sound.Sound(self.testFile)  # noqa
 

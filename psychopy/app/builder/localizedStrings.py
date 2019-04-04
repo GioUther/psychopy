@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """
@@ -10,12 +10,13 @@ Discover all _localized strings from all Builder components, etc.
 
 Mainly used by validators.py -- need access to _translate()d field names.
 """
+from __future__ import absolute_import, print_function
 
 import copy
-import os, glob
-
-from ..localization import _translate
-from psychopy.app.builder.components._base import _localized as _localizedBase
+import os
+import glob
+from psychopy.localization import _localized as _localizedBase
+from psychopy.localization import _translate
 
 _localizedDialogs = {
     # strings for all allowedVals (from all components) go here:
@@ -77,7 +78,23 @@ _localizedDialogs = {
     # Experiment info dialog:
     'Field': _translate('Field'),
     'Default': _translate('Default'),
-}
+    # Mouse:
+    'any click': _translate('any click'),
+    'valid click': _translate('valid click'),
+    'mouse onset':_translate('mouse onset'),
+    'Routine': _translate('Routine'),
+    # Polygon:
+    'line': _translate('line'),
+    'triangle': _translate('triangle'),
+    'rectangle': _translate('rectangle'),
+    'cross': _translate('cross'),
+    'star': _translate('star'),
+    'regular polygon...': _translate('regular polygon...'),
+    # Variable component
+    'first': _translate('first'),
+    'last': _translate('last'),
+    'all': _translate('all'),
+    'average': _translate('average')}
 
 _localized = copy.copy(_localizedBase)
 _localized.update(_localizedDialogs)
@@ -89,11 +106,11 @@ components = [os.path.basename(m).replace('.py', '') for m in modules
 
 for comp in components:
     try:
-        exec('from psychopy.app.builder.components.' + comp + ' import _localized as _loc')
+        exec('from psychopy.experiment.components.' + comp + ' import _localized as _loc')
         _localized.update(_loc)
     except ImportError:
         pass
 
 if __name__ == '__main__':
-    for key, val in _localized.iteritems():
-        print key, val
+    for key, val in _localized.items():
+        print(key, val)

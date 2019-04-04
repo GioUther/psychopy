@@ -1,10 +1,19 @@
+from __future__ import division
 
+from builtins import map
+from builtins import range
+from builtins import object
+from past.utils import old_div
+
+import os
 from psychopy.visual import RatingScale, Window, shape, TextStim
 from psychopy import event, core
 from psychopy.constants import (NOT_STARTED, STARTED, PLAYING, PAUSED, STOPPED,
                                 FINISHED, PRESSED, RELEASED, FOREVER)
 from psychopy.tests import utils
 import pytest, copy
+
+_travisTesting = bool("{}".format(os.environ.get('TRAVIS')).lower() == 'true')
 
 """define RatingScale configurations, test the logic
 
@@ -33,7 +42,6 @@ class Test_class_RatingScale(object):
 
         # defaults: ---------
         r = copy.copy(self.r)
-        assert len(repr(r).split(',')) == 49
         assert (r.low, r.high, r.precision) == (1, 7, 1)
         assert (r.markerStyle, r.markerStart, r.markerPlaced) == ('triangle', None, False)
 
@@ -50,7 +58,7 @@ class Test_class_RatingScale(object):
         ch = ['a', 'b']
         r = RatingScale(self.win, choices=ch, precision=10, autoLog=False)
         assert r.precision == 1  # because choices
-        assert r.respKeys == map(str, range(len(ch)))
+        assert r.respKeys == list(map(str, list(range(len(ch)))))
         r = RatingScale(self.win, choices=['a'], autoLog=False)
 
         r = RatingScale(self.win, tickMarks=[1,2,3], labels=['a','b'], autoLog=False)
@@ -72,7 +80,7 @@ class Test_class_RatingScale(object):
         r = RatingScale(self.win, acceptPreText='a', acceptText='a', acceptSize=2.1, autoLog=False)
 
         r = RatingScale(self.win, leftKeys=['a'], rightKeys=['a'], autoLog=False)
-        assert r.respKeys == map(str, range(1,8))
+        assert r.respKeys == list(map(str, list(range(1,8))))
         r = RatingScale(self.win, respKeys=['a'], acceptKeys=['a'], autoLog=False)
         r = RatingScale(self.win, acceptKeys=['1'], autoLog=False)
         r = RatingScale(self.win, tickHeight=-1, autoLog=False)
@@ -93,7 +101,7 @@ class Test_class_RatingScale(object):
         r = RatingScale(self.win, pos=(0,.5), skipKeys='space', autoLog=False)
         r = RatingScale(self.winpix, pos=[1], autoLog=False)
         r = RatingScale(self.winpix, pos=['a','x'], autoLog=False)
-        assert r.pos == [0.0, -50.0 / r.win.size[1]]
+        assert r.pos == [0.0, old_div(-50.0, r.win.size[1])]
         x, y = -3, 17
         r = RatingScale(self.winpix, pos=(x, y), size=.2, stretch=2, autoLog=False)
         assert r.offsetHoriz == 2. * x / r.win.size[0]
@@ -195,7 +203,7 @@ class Test_class_RatingScale(object):
         r = RatingScale(self.win, tickMarks=[1,2,3], labels=None, autoLog=False)
         r = RatingScale(self.win, leftKeys=['s'], autoLog=False)
         r.markerPlaced = False
-        event._onPygletKey(symbol='s', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='s', modifiers=0, emulated=True)
         r.draw()
 
     def test_obsolete_args(self):
@@ -211,28 +219,28 @@ class Test_class_RatingScale(object):
         r.markerPlaced = True
 
         r.mouseOnly = False
-        event._onPygletKey(symbol='tab', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='tab', modifiers=0, emulated=True)
         r.draw()
 
         r.respKeys = ['s']
         r.enableRespKeys = True
-        event._onPygletKey(symbol='s', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='s', modifiers=0, emulated=True)
         r.draw()
 
         # test move left, move right:
         r = RatingScale(self.win, markerStart=3, autoLog=False)
         assert r.markerPlacedAt == 2
-        event._onPygletKey(symbol='left', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='left', modifiers=0, emulated=True)
         r.draw()
         assert r.markerPlaced  # and r.markerPlacedBySubject
         #assert r.markerPlacedAt == 1
-        event._onPygletKey(symbol='right', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='right', modifiers=0, emulated=True)
         r.draw()
         #assert r.markerPlacedAt == 2
 
         r.acceptKeys = ['s']
         r.beyondMinTime = True
-        event._onPygletKey(symbol='s', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='s', modifiers=0, emulated=True)
         r.draw()
 
     def test_somelines(self):
@@ -243,7 +251,7 @@ class Test_class_RatingScale(object):
         r.respKeys = ['s']
         r.allKeys = ['s']
         r.tickFromKeyPress = {u's': 1}
-        event._onPygletKey(symbol='s', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='s', modifiers=0, emulated=True)
         r.singleClick = True
         r.beyondMinTime = True
         r.draw()
@@ -285,12 +293,15 @@ class Test_class_RatingScale(object):
         core.wait(.001, 0)
         r.acceptKeys = r.allKeys = ['1']
         r.beyondMinTime = True
-        event._onPygletKey(symbol='1', modifiers=None, emulated=True)
+        event._onPygletKey(symbol='1', modifiers=0, emulated=True)
         r.draw()
         h = r.getHistory()
         assert h[0] == (None, 0)
         assert h[-1][0] == 1
-        assert 0.001 < h[-1][1] < 0.03
+        if _travisTesting:
+            assert 0.001 < h[-1][1] < 0.05  # travis virtual machines not great
+        else:
+            assert 0.001 < h[-1][1] < 0.03
 
     def test_labels_False(self):
         for anchor in [None, 'a']:

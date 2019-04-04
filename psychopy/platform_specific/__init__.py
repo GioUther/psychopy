@@ -1,7 +1,13 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """Platform specific extensions (using ctypes)"""
+
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
+
+from __future__ import absolute_import, print_function
 
 import sys
 import platform
@@ -29,16 +35,16 @@ def sendStayAwake():
 
     Added: v1.79.00.
 
-    Currently supported on: windows, OS X
+    Currently supported on: windows, macOS
     """
     return False
 
 # NB includes vista and 7 (but not sure about vista64)
 if sys.platform == 'win32':
-    from win32 import *  # pylint: disable=W0401
+    from .win32 import *  # pylint: disable=W0401
 elif sys.platform == 'darwin':
-    from darwin import *  # pylint: disable=W0401
+    from .darwin import *  # pylint: disable=W0401
 elif sys.platform.startswith('linux'):  # normally 'linux2'
-    from linux import *  # pylint: disable=W0401
+    from .linux import *  # pylint: disable=W0401
 elif sys.platform == 'posix':  # ever?!
-    from posix import *  # pylint: disable=W0401
+    from .posix import *  # pylint: disable=W0401

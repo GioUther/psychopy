@@ -1,4 +1,7 @@
+from __future__ import division
 
+from builtins import object
+from past.utils import old_div
 from psychopy import microphone, core, web
 from psychopy.microphone import *
 from psychopy.microphone import _getFlacPath
@@ -71,7 +74,7 @@ class TestMicrophone(object):
 
         old_size = os.path.getsize(mic.savedFile)
         new_file = mic.resample(keep=False)
-        assert old_size / 3.1 < os.path.getsize(new_file) < old_size / 2.9
+        assert old_div(old_size, 3.1) < os.path.getsize(new_file) < old_div(old_size, 2.9)
         mic.getLoudness()
 
         mic.playback()
@@ -137,7 +140,7 @@ class TestMicrophoneNoSound(object):
     def test_wav_flac(self):
         filename = os.path.join(self.tmp, 'test_bad_readWav')
         with open(filename, 'wb') as fd:
-            fd.write('x')
+            fd.write(b'x')
         with pytest.raises(SoundFileError):
             readWavFile(filename)
 

@@ -1,7 +1,12 @@
+from __future__ import print_function
+from __future__ import division
+from builtins import str
+from builtins import range
 from os.path import abspath, basename, dirname, isfile, join as pjoin
 import os.path
 import shutil
 import numpy as np
+import io
 from psychopy import logging
 
 try:
@@ -38,13 +43,20 @@ def compareScreenshot(fileName, win, crit=5.0):
     win.movieFrames=[]
     #if the file exists run a test, if not save the file
     if not isfile(fileName):
+        frame = frame.resize((int(frame.size[0]/2), int(frame.size[1]/2)),
+                             resample=Image.LANCZOS)
         frame.save(fileName, optimize=1)
         skip("Created %s" % basename(fileName))
     else:
         expected = Image.open(fileName)
         expDat = np.array(expected.getdata())
         imgDat = np.array(frame.getdata())
-        rms = (((imgDat-expDat)**2).sum()/len(imgDat))**0.5
+        # for retina displays the frame data is 4x bigger than expected
+        if win.useRetina and imgDat.shape[0] == expDat.shape[0]*4:
+            frame = frame.resize(expected.size, resample=Image.LANCZOS)
+            imgDat = np.array(frame.getdata())
+            crit += 5  # be more relaxed because of the interpolation
+        rms = np.std(imgDat-expDat)
         filenameLocal = fileName.replace('.png','_local.png')
         if rms >= crit/2:
             #there was SOME discrepency
@@ -57,15 +69,26 @@ def compareScreenshot(fileName, win, crit=5.0):
             "RMS=%.3g at threshold=%.3g. Local copy in %s" % (rms, crit, filenameLocal)
 
 
-def compareTextFiles(pathToActual, pathToCorrect, delim=None):
-    """Compare the text of two files, ignoring EOL differences, and save a copy if they differ
+def compareTextFiles(pathToActual, pathToCorrect, delim=None,
+                     encoding='utf-8-sig', tolerance=None):
+    """Compare the text of two files, ignoring EOL differences,
+    and save a copy if they differ
+
+    State a tolerance, or percentage of errors allowed,
+    to account for differences in version numbers, datetime, etc
     """
+
     if not os.path.isfile(pathToCorrect):
-        logging.warning('There was no comparison ("correct") file available, saving current file as the comparison:%s' %pathToCorrect)
-        foundComparisonFile=False
-        shutil.copyfile(pathToActual,pathToCorrect)
-        assert foundComparisonFile #deliberately raise an error to see the warning message
-        return
+        logging.warning('There was no comparison ("correct") file available, for path "{pathToActual}"\n'
+                        '\t\t\tSaving current file as the comparison: {pathToCorrect}'
+                        .format(pathToActual=pathToActual,
+                                pathToCorrect=pathToCorrect))
+        shutil.copyfile(pathToActual, pathToCorrect)
+        raise IOError("File not found")  # deliberately raise an error to see the warning message, but also to create file
+
+    allowLines = 0
+    lineDiff = True
+
     if delim is None:
         if pathToCorrect.endswith('.csv'):
             delim=','
@@ -73,17 +96,35 @@ def compareTextFiles(pathToActual, pathToCorrect, delim=None):
             delim='\t'
 
     try:
-        #we have the necessary file
-        txtActual = open(pathToActual, 'r').readlines()
-        txtCorrect = open(pathToCorrect, 'r').readlines()
-        assert len(txtActual)==len(txtCorrect), "The data file has the wrong number of lines"
+        # we have the necessary file
+        with io.open(pathToActual, 'r', encoding='utf-8-sig', newline=None) as f:
+            txtActual = f.readlines()
+
+        with io.open(pathToCorrect, 'r', encoding='utf-8-sig', newline=None) as f:
+            txtCorrect = f.readlines()
+
+        if tolerance is not None:
+            # Set number of lines allowed to fail
+            allowLines = round((tolerance * len(txtCorrect)) / 100, 0)
+
+        # Check number of lines per document for equality
+        lineDiff = len(txtActual) == len(txtCorrect)
+        assert lineDiff
+
         for lineN in range(len(txtActual)):
             if delim is None:
-                #just compare the entire line
-                assert lineActual==lineCorrect
-            else:#word by word instead
+                lineActual = txtActual[lineN]
+                lineCorrect = txtCorrect[lineN]
+
+                # just compare the entire line
+                if not lineActual == lineCorrect:
+                    allowLines -= 1
+                assert allowLines >= 0
+
+            else:  # word by word instead
                 lineActual=txtActual[lineN].split(delim)
                 lineCorrect=txtCorrect[lineN].split(delim)
+
                 for wordN in range(len(lineActual)):
                     wordActual=lineActual[wordN]
                     wordCorrect=lineCorrect[wordN]
@@ -109,12 +150,22 @@ def compareTextFiles(pathToActual, pathToCorrect, delim=None):
                             print(lineCorrect)
                         assert wordActual==wordCorrect, "Values at (%i,%i) differ: %s != %s " \
                             %(lineN, wordN, repr(wordActual), repr(wordCorrect))
-    except AssertionError, err:
+
+    except AssertionError as err:
         pathToLocal, ext = os.path.splitext(pathToCorrect)
         pathToLocal = pathToLocal+'_local'+ext
-        shutil.copyfile(pathToActual,pathToLocal)
-        print("txtActual!=txtCorr: Saving local copy to %s" %pathToLocal)
-        raise AssertionError, err
+
+        # Set assertion type
+        if not lineDiff:  # Fail if number of lines not equal
+            msg = "{} has the wrong number of lines".format(pathToActual)
+        elif allowLines < 0:  # Fail if tolerance reached
+            msg = 'Number of differences in {failed} exceeds the {tol}% tolerance'.format(failed=pathToActual,
+                                                                                          tol=tolerance or 0)
+        else:
+            shutil.copyfile(pathToActual,pathToLocal)
+            msg = "txtActual != txtCorr: Saving local copy to {}".format(pathToLocal)
+        logging.error(msg)
+        raise AssertionError(err)
 
 def compareXlsxFiles(pathToActual, pathToCorrect):
     from openpyxl.reader.excel import load_workbook
@@ -125,16 +176,17 @@ def compareXlsxFiles(pathToActual, pathToCorrect):
 
     for wsN, expWS in enumerate(expBook.worksheets):
         actWS = actBook.worksheets[wsN]
-        for key, expVal in expWS._cells.items():
+        for key, expVal in list(expWS._cells.items()):
             actVal = actWS._cells[key].value
             expVal = expVal.value
             # intercept lists-of-floats, which might mismatch by rounding error
             isListableFloatable = False
-            if str(expVal).startswith('['):
-                expValList = eval(str(expVal))
+            if u"{}".format(expVal).startswith('['):
+                expValList = eval(u"{}".format(expVal))
                 try:
                     expVal = np.array(expValList, dtype=float)
-                    actVal = np.array(eval(str(actVal)), dtype=float) # should go through if expVal does...
+                    actVal = np.array(eval(u"{}".format(actVal)),
+                                      dtype=float) # should go through if expVal does...
                     isListableFloatable = True
                 except Exception:
                     pass # non-list+float-able at this point = default
@@ -161,7 +213,7 @@ def compareXlsxFiles(pathToActual, pathToCorrect):
         pathToLocal = pathToLocal+'_local'+ext
         shutil.copyfile(pathToActual,pathToLocal)
         logging.warning("xlsxActual!=xlsxCorr: Saving local copy to %s" %pathToLocal)
-        raise IOError, error
+        raise IOError(error)
 
 _travisTesting = bool(str(os.environ.get('TRAVIS')).lower() == 'true')  # in Travis-CI testing
 

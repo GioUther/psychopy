@@ -14,6 +14,8 @@
 /.spyderproject
 /.spyproject
 /.vscode
+/.cache
+/.idea
 
 # Compiled source #
 ###################
@@ -59,6 +61,7 @@ nonSVN
 ###################################
 PsyScope*
 psychopy1
+psychojs.zip
 
 psychopy/demos/coder/misc/frame*
 psychopy/demos/*.psydat
@@ -73,13 +76,16 @@ psychopy/tests/*Out.*
 psychopy/tests/data/*_local.png
 psychopy/tests/*htmlcov*
 
+# compile from psychopy/changelog.txt
 docs/source/changelog.rst
+docs/source/changelog.md
 
 /iohub_docs/*.bat
 /iohub_docs/*.txt
 
 sitePrefs.cfg
 appData.cfg
+gource_psychopy.mkv
 
 *lastrun.py
 *.iohpid
@@ -92,6 +98,5 @@ appData.cfg
 # Documentation generated files #
 #################################
 .coverage
-.idea
 builddocs.sh
 nonSphinx

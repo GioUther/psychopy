@@ -1,21 +1,33 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """
 Module containing validators for various parameters.
 """
+from __future__ import absolute_import, print_function
 
+from past.builtins import basestring
 import wx
-from ..localization import _translate
+
+import psychopy.experiment.utils
+from psychopy.localization import _translate
 from . import experiment
 from .localizedStrings import _localized
+from pkg_resources import parse_version
+
+if parse_version(wx.__version__) < parse_version('4.0.0a1'):
+    _ValidatorBase = wx.PyValidator
+else:
+    _ValidatorBase = wx.Validator
+
+from pyglet.window import key
 
 
-class BaseValidator(wx.PyValidator):
+class BaseValidator(_ValidatorBase):
     """
     Component name validator for _BaseParamsDlg class. It depends on access
     to an experiment namespace.
@@ -44,7 +56,7 @@ class BaseValidator(wx.PyValidator):
             except Exception:
                 print("Couldn't find the root dialog for this event")
         message, valid = self.check(parent)
-        self.setMessage(parent, message)
+        self.updateMessage(parent)
         return valid
 
     def TransferFromWindow(self):
@@ -56,8 +68,18 @@ class BaseValidator(wx.PyValidator):
     def check(self, parent):
         raise NotImplementedError
 
-    def setMessage(self, parent, message):
-        raise NotImplementedError
+    def updateMessage(self, parent):
+        """Checks the dict of warning messages for the parent and inserts the
+        top one
+        :param parent: a component params dialog
+        :param message: a
+        :return:
+        """
+        warnings = [w for w in list(parent.warningsDict.values()) if w] or ['']
+        msg = warnings[0]
+        if parent.nameOKlabel and parent.nameOKlabel.GetLabel() != msg:
+            parent.nameOKlabel.SetLabel(msg)
+            parent.Layout()
 
 
 class NameValidator(BaseValidator):
@@ -73,28 +95,26 @@ class NameValidator(BaseValidator):
         """
         control = self.GetWindow()
         newName = control.GetValue()
+        msg, OK = '', True  # until we find otherwise
         if newName == '':
-            return _translate("Missing name"), False
+            msg = _translate("Missing name")
+            OK = False
         else:
             namespace = parent.frame.exp.namespace
             used = namespace.exists(newName)
             sameAsOldName = bool(newName == parent.params['name'].val)
             if used and not sameAsOldName:
-                msg = _translate(
-                    "That name is in use (by %s). Try another name.")
-                return msg % used, False
+                msg = _translate("That name is in use (by %s). Try another name.") % used
+                OK = False
             elif not namespace.isValid(newName):  # valid as a var name
                 msg = _translate("Name must be alpha-numeric or _, no spaces")
-                return msg, False
+                OK = False
             # warn but allow, chances are good that its actually ok
             elif namespace.isPossiblyDerivable(newName):
                 msg = _translate(namespace.isPossiblyDerivable(newName))
-                return msg, True
-            else:
-                return "", True
-
-    def setMessage(self, parent, message):
-        parent.nameOKlabel.SetLabel(message)
+                OK = True
+        parent.warningsDict['name'] = msg
+        return msg, OK
 
 
 class CodeSnippetValidator(BaseValidator):
@@ -104,8 +124,6 @@ class CodeSnippetValidator(BaseValidator):
 
     @see: _BaseParamsDlg
     """
-    # class attribute: dict of {fieldName: message} to handle all messages
-    clsWarnings = {}
 
     def __init__(self, fieldName):
         super(CodeSnippetValidator, self).__init__()
@@ -116,7 +134,6 @@ class CodeSnippetValidator(BaseValidator):
             # should have all _localized[fieldName] from .localizedStrings
             # might as well try to do something useful if fail:
             self.displayName = _translate(fieldName)
-        self.clsWarnings[fieldName] = ''
 
     def Clone(self):
         return self.__class__(self.fieldName)
@@ -133,25 +150,79 @@ class CodeSnippetValidator(BaseValidator):
         random(1,100). Hard to know what will be problematic.
         But its always the case that self-reference is wrong.
         """
+        # first check if there's anything to validate (and return if not)
+
+        def _checkParamUpdates(parent):
+            """Checks whether param allows updates. Returns bool."""
+            if parent.params[self.fieldName].allowedUpdates is not None:
+                # Check for new set with elements common to lists compared - True if any elements are common
+                return bool(set(parent.params[self.fieldName].allowedUpdates) & set(allowedUpdates))
+
+        def _highlightParamVal(parent, error=False):
+            """Highlights text containing error - defaults to black"""
+            try:
+                if error:
+                    parent.paramCtrls[self.fieldName].valueCtrl.SetForegroundColour("Red")
+                else:
+                    parent.paramCtrls[self.fieldName].valueCtrl.SetForegroundColour("Black")
+            except KeyError:
+                pass
+
         control = self.GetWindow()
         if not hasattr(control, 'GetValue'):
             return '', True
         val = control.GetValue()  # same as parent.params[self.fieldName].val
         if not isinstance(val, basestring):
             return '', True
-        codeWanted = experiment._unescapedDollarSign_re.search(val)
+
+        field = self.fieldName
+        msg, OK = '', True  # until we find otherwise
+        _highlightParamVal(parent)
+        codeWanted = psychopy.experiment.utils.unescapedDollarSign_re.search(val)
         isCodeField = bool(parent.params[self.fieldName].valType == 'code')
+        allowedUpdates = ['set every repeat', 'set every frame']
+
+        # Check if variable incorrectly defined in correct answer
+        allKeyBoardKeys = list(key._key_names.values()) + [str(num) for num in range(10)]
+        if self.fieldName == 'correctAns' and not val.startswith('$'):
+            if ',' in val:  # comma separated
+                keyList = val.upper().split(',')
+                keyList = [thisKey.replace(' ', '') for thisKey in keyList if len(thisKey) > 0]
+            else:  # whitespace separated
+                keyList = val.upper().split(' ')
+                keyList = [thisKey.replace(' ', '') for thisKey in keyList if len(thisKey) > 0]
+
+            potentialVars = list(set(keyList) - set(allKeyBoardKeys))  # Elements of keyList not in allKeyBoardKeys
+            _highlightParamVal(parent, bool(potentialVars))
+            if len(potentialVars):
+                msg = _translate("It looks like your 'Correct answer' contains a variable - prepend variables with '$' e.g. ${val}")
+                msg = msg.format(val=potentialVars[0].lower())
+
         if codeWanted or isCodeField:
             # get var names from val, check against namespace:
             code = experiment.getCodeFromParamStr(val)
             try:
-                names = compile(code, '', 'eval').co_names
-            except SyntaxError:
+                names = compile(code, '', 'exec').co_names
+            except SyntaxError as e:
                 # empty '' compiles to a syntax error, ignore
                 if not code.strip() == '':
+                    _highlightParamVal(parent, True)
                     msg = _translate('Python syntax error in field `{}`:  {}')
-                    return msg.format(self.displayName, code), False
+                    msg = msg.format(self.displayName, code)
+                    OK = False
             else:
+                # Check whether variable param entered as a constant
+                if isCodeField and _checkParamUpdates(parent):
+                    if parent.paramCtrls[self.fieldName].getUpdates() not in allowedUpdates:
+                        try:
+                            eval(code)
+                        except NameError as e:
+                            _highlightParamVal(parent, True)
+                            msg = _translate("Looks like your variable '{code}' in '{displayName}' should be set to update.")
+                            msg = msg.format(code=code, displayName=self.displayName)
+                        except SyntaxError as e:
+                            msg = ''
+
                 # namespace = parent.frame.exp.namespace
                 # parent.params['name'].val is not in namespace for new params
                 # and is not fixed as .val until dialog closes. Use getvalue()
@@ -161,23 +232,12 @@ class CodeSnippetValidator(BaseValidator):
                     for name in names:
                         # `name` means a var name within a compiled code snippet
                         if name == parentName:
+                            _highlightParamVal(parent, True)
                             msg = _translate(
                                 'Python var `{}` in `{}` is same as Name')
-                            return msg.format(name, self.displayName), False
-        return '', True
+                            msg = msg.format(name, self.displayName)
+                            OK = True
 
-    def setMessage(self, parent, message):
-        """Set nameOklabel to the first warning (if any).
 
-        Complexity: Use a single nameOklabel for warnings for all fields.
-        And we want to reset a given warning to 'all clear' when fixed by
-        user, but not reset all warnings.
-        Solution: use a class attribute to collect warnings for all params.
-        should only be one param dialog open at a time, making this possible:
-        Reset clsWarnings to {} when setting up the dialog.
-        """
-        self.clsWarnings[self.fieldName] = message
-        warnings = [w for w in self.clsWarnings.values() if w] or ['']
-        if parent.nameOKlabel:
-            parent.nameOKlabel.SetLabel(warnings[0])
-
+        parent.warningsDict[field] = msg
+        return msg, OK

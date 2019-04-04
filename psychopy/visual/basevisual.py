@@ -1,23 +1,31 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """Provides class BaseVisualStim and mixins; subclass to get visual stimuli
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
+
+from __future__ import absolute_import, division, print_function
+
+from builtins import object
+from past.builtins import basestring
 
 # Ensure setting pyglet.options['debug_gl'] to False is done prior to any
 # other calls to pyglet or pyglet submodules, otherwise it may not get picked
 # up by the pyglet GL engine and have no effect.
 # Shaders will work but require OpenGL2.0 drivers AND PyOpenGL3.0+
+
 import pyglet
 pyglet.options['debug_gl'] = False
 GL = pyglet.gl
+
 try:
     from PIL import Image
 except ImportError:
-    import Image
+    from . import Image
 
 import copy
 import sys
@@ -389,12 +397,14 @@ class ColorMixin(object):
                 # GratingStim, RadialStim, ImageStim etc
                 elif hasattr(self, '_needTextureUpdate'):
                     self._needTextureUpdate = True
-                elif self.__class__.__name__ in ('ShapeStim', 'DotStim'):
-                    pass  # They work fine without shaders?
+                elif (hasattr(self, 'fillColor')  # a derivative of shapestim
+                        or self.__class__.__name__ == 'DotStim'):
+                    pass  # no need for shaders or rebuilding
                 elif self.autoLog:
                     logging.warning('Tried to set contrast while useShaders '
-                                    '= False but stimulus was not rebuild. '
-                                    'Contrast might remain unchanged.')
+                                    '= False but stimulus was not rebuilt. '
+                                    'Contrast might remain unchanged. {}'
+                                    .format(self))
         elif self.autoLog:
             logging.warning('Contrast was set on class where useShaders was '
                             'undefined. Contrast might remain unchanged')
@@ -426,7 +436,7 @@ class ColorMixin(object):
         # Ensure that we work on 0-centered color (to make negative contrast
         # values work)
         if colorSpace not in ['rgb', 'dkl', 'lms', 'hsv']:
-            rgb = (rgb / 255.0) * 2 - 1
+            rgb = rgb / 127.5 - 1
 
         # Convert to RGB in range 0:1 and scaled for contrast
         # NB glColor will clamp it to be 0-1 (whether or not we use FBO)
@@ -491,7 +501,9 @@ class ContainerMixin(object):
         if hasattr(self, 'flipVert') and self.flipVert:
             flip[1] = -1 # True=(-1), False->(+1)
 
-        if hasattr(self, 'vertices'):
+        if hasattr(self, '_tesselVertices'):  # Shapes need to render from this
+            verts = self._tesselVertices
+        elif hasattr(self, 'vertices'):
             verts = self.vertices
         else:
             verts = self._verticesBase
@@ -537,6 +549,7 @@ class ContainerMixin(object):
         orientation (ori) settings (and by the vertices for shape stimuli).
 
         See Coder demos: shapeContains.py
+        See Coder demos: shapeContains.py
         """
         # get the object in pixels
         if hasattr(x, 'border'):
@@ -564,8 +577,16 @@ class ContainerMixin(object):
         # ourself in pixels
         if hasattr(self, 'border'):
             poly = self._borderPix  # e.g., outline vertices
+        elif hasattr(self, 'boundingBox'):
+            if abs(self.ori) > 0.1:
+                raise RuntimeError("TextStim.contains() doesn't currently "
+                                   "support rotated text.")
+            w, h = self.boundingBox  # e.g., outline vertices
+            x, y = self.posPix
+            poly = numpy.array([[x+w/2, y-h/2], [x-w/2, y-h/2],
+                                [x-w/2, y+h/2], [x+w/2, y+h/2]])
         else:
-            poly = self.verticesPix  # e.g., tesselated vertices
+            poly = self.verticesPix  # e.g., tessellated vertices
 
         return pointInPolygon(xy[0], xy[1], poly=poly)
 
@@ -673,7 +694,7 @@ class TextureMixin(object):
                 res = tex.shape[0]
             if useShaders:
                 dataType = GL.GL_FLOAT
-        elif tex in (None, "none", "None"):
+        elif tex in (None, "none", "None", "color"):
             # 4x4 (2x2 is SUPPOSED to be fine but generates weird colors!)
             res = 1
             intensity = numpy.ones([res, res], numpy.float32)
@@ -697,7 +718,7 @@ class TextureMixin(object):
             # -1:3 means the middle is at +1
             intens = numpy.linspace(-1.0, 3.0, res, endpoint=True)
             # remove from 3 to get back down to -1
-            intens[int(res / 2.0 + 1):] = 2.0 - intens[int(res / 2.0 + 1):]
+            intens[res // 2 + 1 :] = 2.0 - intens[res // 2 + 1 :]
             intensity = intens * numpy.ones([res, 1])  # make 2D
             wasLum = True
         elif tex == "sinXsin":
@@ -721,7 +742,7 @@ class TextureMixin(object):
             rad = makeRadialMatrix(res)
             # 3sd.s by the edge of the stimulus
             invVar = (1.0 / allMaskParams['sd']) ** 2.0
-            intensity = numpy.exp(-rad**2.0 / (2.0 * invVar)) * 2 - 1
+            intensity = numpy.exp( -rad**2.0 / (2.0 * invVar)) * 2 - 1
             wasLum = True
         elif tex == "cross":
             X, Y = numpy.mgrid[-1:1:1j * res, -1:1:1j * res]
@@ -751,7 +772,7 @@ class TextureMixin(object):
                 [numpy.logical_and(rad <= 1, rad >= 1 - frng)])[1:]
 
             # Make a raised_cos (half a hamming window):
-            raisedCos = numpy.hamming(hammingLen)[:hammingLen / 2]
+            raisedCos = numpy.hamming(hammingLen)[ : hammingLen // 2]
             raisedCos -= numpy.min(raisedCos)
             raisedCos /= numpy.max(raisedCos)
 
@@ -760,7 +781,7 @@ class TextureMixin(object):
             dFromEdge = numpy.abs(
                 (1 - allMaskParams['fringeWidth']) - rad[raisedCosIdx])
             dFromEdge /= numpy.max(dFromEdge)
-            dFromEdge *= numpy.round(hammingLen / 2)
+            dFromEdge *= numpy.round(hammingLen/2)
 
             # This is the indices into the hamming (larger for small distances
             # from the edge!):
@@ -771,7 +792,7 @@ class TextureMixin(object):
 
             # Scale it into the interval -1:1:
             intensity = intensity - 0.5
-            intensity = intensity / numpy.max(intensity)
+            intensity /= numpy.max(intensity)
 
             # Sometimes there are some remaining artifacts from this process,
             # get rid of them:
@@ -783,14 +804,14 @@ class TextureMixin(object):
             intensity[artifactIdx] = 0
 
         else:
-            if type(tex) in [str, unicode, numpy.string_]:
+            if isinstance(tex, basestring):
                 # maybe tex is the name of a file:
                 filename = findImageFile(tex)
                 if not filename:
                     msg = "Couldn't find image %s; check path? (tried: %s)"
                     logging.error(msg % (tex, os.path.abspath(tex)))
                     logging.flush()
-                    raise IOError, msg % (tex, os.path.abspath(tex))
+                    raise IOError(msg % (tex, os.path.abspath(tex)))
                 try:
                     im = Image.open(filename)
                     im = im.transpose(Image.FLIP_TOP_BOTTOM)
@@ -799,7 +820,7 @@ class TextureMixin(object):
                     logging.error(msg % (filename))
                     logging.flush()
                     msg = "Found file '%s' [= %s], failed to load as an image"
-                    raise IOError, msg % (tex, os.path.abspath(tex))
+                    raise IOError(msg % (tex, os.path.abspath(tex)))
             else:
                 # can't be a file; maybe its an image already in memory?
                 try:
@@ -891,10 +912,10 @@ class TextureMixin(object):
                 rgb = stim.rgb
             else:
                 # colour is not a float - convert to float to do the scaling
-                rgb = stim.rgb / 127.5 - 1.0
+                rgb = (stim.rgb / 127.5) - 1.0
             # if wasImage it will also have ubyte values for the intensity
             if wasImage:
-                intensity = intensity / 127.5 - 1.0
+                intensity = (intensity / 127.5) - 1.0
             # scale by rgb
             # initialise data array as a float
             data = numpy.ones((intensity.shape[0], intensity.shape[1], 4),
@@ -980,7 +1001,8 @@ class TextureMixin(object):
         of your stimulus, so doesn't need calling explicitly by the user.
         """
         GL.glDeleteTextures(1, self._texID)
-        GL.glDeleteTextures(1, self._maskID)
+        if hasattr(self, '_maskID'):
+            GL.glDeleteTextures(1, self._maskID)
 
     @attributeSetter
     def mask(self, value):
@@ -1149,10 +1171,10 @@ class WindowMixin(object):
                                   'visual.BaseVisualStim.draw')
 
     def _selectWindow(self, win):
-        # don't call switch if it's already the curr window
-        if win != globalVars.currWindow and win.winType == 'pyglet':
-            win.winHandle.switch_to()
-            globalVars.currWindow = win
+        """Switch drawing to the specified window. Calls the window's
+        _setCurrent() method which handles the switch.
+        """
+        win._setCurrent()
 
     def _updateList(self):
         """The user shouldn't need this method since it gets called
@@ -1261,6 +1283,12 @@ class BaseVisualStim(MinimalStim, WindowMixin, LegacyVisualMixin):
             else:
                 # we have an image; calculate the size in `units` that matches
                 # original pixel size
+                # also scale for retina display (virtual pixels are bigger)
+                if self.win.useRetina:
+                    winSize = self.win.size / 2
+                else:
+                    winSize = self.win.size
+                # then handle main scale
                 if self.units == 'pix':
                     value = numpy.array(self._origSize)
                 elif self.units in ('deg', 'degFlatPos', 'degFlat'):
@@ -1270,9 +1298,9 @@ class BaseVisualStim(MinimalStim, WindowMixin, LegacyVisualMixin):
                     value = pix2deg(array(self._origSize, float),
                                     self.win.monitor)
                 elif self.units == 'norm':
-                    value = 2 * array(self._origSize, float) / self.win.size
+                    value = 2 * array(self._origSize, float) / winSize
                 elif self.units == 'height':
-                    value = array(self._origSize, float) / self.win.size[1]
+                    value = array(self._origSize, float) / winSize[1]
                 elif self.units == 'cm':
                     value = pix2cm(array(self._origSize, float),
                                    self.win.monitor)

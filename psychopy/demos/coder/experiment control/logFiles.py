@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -19,8 +19,9 @@ The importance levels are
 So setting to DEBUG level will include all possible messages, setting to ERROR will include only the absolutely essential messages.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
+from builtins import range
 from psychopy import logging, core, visual
 
 globalClock = core.Clock()  # if this isn't provided the log times will reflect secs since python started

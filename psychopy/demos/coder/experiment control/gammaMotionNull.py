@@ -1,9 +1,9 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
 Determine screen gamma using motion-nulling method
-of Ledgeway and Smith, 1994, Vision Research, 34, 2727–2740
+of Ledgeway and Smith, 1994, Vision Research, 34, 2727-2740
 A similar system had been used early for chromatic isoluminance:
 Anstis SM, Cavanagh P. A minimum motion technique for judging equiluminance.
 In: Sharpe MJD & LT Colour vision: Psychophysics and physiology. London: Academic Press; 1983. pp. 66-77.
@@ -12,8 +12,10 @@ Instructions: on each trial press the up/down cursor keys depending on
 the apparent direction of motion of the bars.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
+from builtins import next
+from builtins import range
 from psychopy import visual, core, event, gui, data
 from psychopy.tools.filetools import fromFile, toFile
 from psychopy.visual import filters
@@ -142,7 +144,7 @@ def presentStimulus(direction):
 # run the staircase
 for trialN in range(info['nTrials']):
     for stairCase in stairCases:
-        thisGamma = stairCase.next()
+        thisGamma = next(stairCase)
         t = globalClock.getTime()
         win.gamma = [thisGamma, thisGamma, thisGamma]
 

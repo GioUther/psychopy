@@ -1,11 +1,13 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """Functions and classes related to variable type conversion
 """
+from __future__ import absolute_import, division, print_function
 
 import numpy
 
@@ -49,4 +51,4 @@ def uint8_float(inarray):
     0.0
 
     """
-    return numpy.asarray(inarray, 'f') / 127.5 - 1
+    return numpy.asarray(inarray, 'f')/127.5 - 1

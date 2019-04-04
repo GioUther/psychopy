@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
-# coding=utf-8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 # Acknowledgements:
@@ -12,7 +12,7 @@
 #    (Mario Kleiner) but does not use that code directly
 #    It is, for example, Mario's idea to add the 0.01 to avoid rounding issues
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 from psychopy.visual.shaders import compileProgram, vertSimple
 
 bitsMonoModeFrag = """

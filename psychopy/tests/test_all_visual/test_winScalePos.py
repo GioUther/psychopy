@@ -1,4 +1,7 @@
 
+from builtins import str
+from builtins import zip
+from builtins import object
 from psychopy import visual
 from psychopy.tests import utils
 import os
@@ -70,8 +73,8 @@ class Test_Win_Scale_Pos_Ori(object):
                     img.draw()
 
                     oristr = str(ori)
-                    scalestr = str(scale[0]) + ',' + str(scale[1])
-                    posstr = str(offset[0]) + ',' + str(offset[1])
+                    scalestr = str(scale[0]) + '_' + str(scale[1])
+                    posstr = str(offset[0]) + '_' + str(offset[1])
                     filename = 'winScalePos_ori%s_scale%s_pos%s.png' % \
                         (oristr, scalestr, posstr)
                     utils.compareScreenshot(filename, self.win, crit=15)

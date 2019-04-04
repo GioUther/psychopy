@@ -1,13 +1,16 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """A simple stimulus for loading images from a file and presenting at exactly
 the resolution and color in the file (subject to gamma correction if set).
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
+from __future__ import absolute_import, division, print_function
+from past.builtins import basestring
 import os
 
 # Ensure setting pyglet.options['debug_gl'] to False is done prior to any
@@ -26,13 +29,14 @@ from psychopy import core, logging
 from psychopy.tools.arraytools import val2array
 from psychopy.tools.monitorunittools import convertToPix
 from psychopy.tools.attributetools import setAttribute, attributeSetter
+from psychopy.tools.filetools import pathToString
 from psychopy.visual.basevisual import MinimalStim, WindowMixin
 from . import globalVars
 
 try:
     from PIL import Image
 except ImportError:
-    import Image
+    from . import Image
 
 import numpy
 
@@ -83,12 +87,12 @@ class SimpleImageStim(MinimalStim, WindowMixin):
                                    self.win.size[0], self.win.size[1]))
 
         # check position with size, warn if stimuli not fully drawn
-        if (self.pos[0] + self.size[0] / 2. > self.win.size[0] / 2. or
-                self.pos[0] - self.size[0] / 2. < -self.win.size[0] / 2.):
+        if ((self.pos[0] + self.size[0]/2) > self.win.size[0]/2 or
+                (self.pos[0] - self.size[0]/2) < -self.win.size[0]/2):
             logging.warning("The image does not completely fit inside "
                             "the window in the X direction.")
-        if (self.pos[1] + self.size[1] / 2. > self.win.size[1] / 2. or
-                self.pos[1] - self.size[1] / 2. < -self.win.size[1] / 2.):
+        if ((self.pos[1] + self.size[1]/2) > self.win.size[1]/2 or
+                (self.pos[1] - self.size[1]/2) < -self.win.size[1]/2):
             logging.warning("The image does not completely fit inside "
                             "the window in the Y direction.")
 
@@ -106,7 +110,7 @@ class SimpleImageStim(MinimalStim, WindowMixin):
         wantLog = autoLog is None and self.win.autoLog
         self.__dict__['autoLog'] = autoLog or wantLog
         if self.autoLog:
-            logging.exp("Created %s = %s" % (self.name, str(self)))
+            logging.exp("Created {} = {}".format(self.name, self))
 
     @attributeSetter
     def flipHoriz(self, value):
@@ -181,8 +185,8 @@ class SimpleImageStim(MinimalStim, WindowMixin):
 
         # move to center of stimulus
         x, y = self._posRendered[:2]
-        GL.glRasterPos2f(self.win.size[0] / 2. - self.size[0] / 2. + x,
-                         self.win.size[1] / 2. - self.size[1] / 2. + y)
+        GL.glRasterPos2f(self.win.size[0]/2 - self.size[0]/2 + x,
+                         self.win.size[1]/2 - self.size[1]/2 + y)
 
         # GL.glDrawPixelsub(GL.GL_RGB, self.imArr)
         GL.glDrawPixels(self.size[0], self.size[1],
@@ -252,8 +256,9 @@ class SimpleImageStim(MinimalStim, WindowMixin):
         can be any format that the Python Imaging Library can import
         (almost any). Can also be an image already loaded by PIL.
         """
+        filename = pathToString(filename)
         self.__dict__['image'] = filename
-        if type(filename) in [str, unicode]:
+        if isinstance(filename, basestring):
             # is a string - see if it points to a file
             if os.path.isfile(filename):
                 self.filename = filename
@@ -286,4 +291,5 @@ class SimpleImageStim(MinimalStim, WindowMixin):
         """Usually you can use 'stim.attribute = value' syntax instead,
         but use this method if you need to suppress the log message.
         """
+        filename = pathToString(filename)
         setAttribute(self, 'image', filename, log)

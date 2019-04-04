@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
-# coding=utf-8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 # Acknowledgements:
@@ -15,10 +15,10 @@
 vision research.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
 from psychopy import logging
-from .bits import BitsSharp, BitsPlusPlus
+from .bits import BitsSharp, BitsPlusPlus, DisplayPlusPlus, DisplayPlusPlusTouch
 from .colorcal import ColorCAL
 # Monkey-patch our metadata into CRS class.
 setattr(ColorCAL, "longName", "CRS ColorCAL")

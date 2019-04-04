@@ -1,40 +1,63 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-#
+
 # To build simple dialogues etc. (requires pyqt4)
 #
 #  Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
-try:
-    from PyQt4 import QtGui
-    QtWidgets = QtGui  # in qt4 these were all in one package
-    from PyQt4.QtCore import Qt
-except Exception:
+from __future__ import absolute_import, print_function
+from .. import constants
+
+from builtins import str
+from past.builtins import unicode
+
+haveQt = False  # until we confirm otherwise
+if constants.PY3:  # much more like to have PyQt5 on Python3
+    importOrder = ['PyQt5', 'PyQt4']
+else:  # more likely the other way on Py27
+    importOrder = ['PyQt4', 'PyQt5']
+
+haveQt = False
+for libname in importOrder:
+    try:
+        exec("import {}".format(libname))
+        haveQt = libname
+        break
+    except ImportError:
+        pass
+
+if not haveQt:
+    # do the main import again not in a try...except to recreate error
+    exec("import {}".format(importOrder[0]))
+elif haveQt == 'PyQt5':
     from PyQt5 import QtWidgets
     from PyQt5 import QtGui
     from PyQt5.QtCore import Qt
+else:
+    from PyQt4 import QtGui  
+    QtWidgets = QtGui  # in qt4 these were all in one package
+    from PyQt4.QtCore import Qt
 
 from psychopy import logging
 import numpy as np
-import string
 import os
 import sys
 import json
-from psychopy.app.localization import _translate
+from psychopy.localization import _translate
 
 OK = QtWidgets.QDialogButtonBox.Ok
 
-qtapp = None
+qtapp = QtWidgets.QApplication.instance()
 
 
 def ensureQtApp():
     global qtapp
-    # make sure there's a wxApp prior to showing a gui, e.g., for expInfo
+    # make sure there's a QApplication prior to showing a gui, e.g., for expInfo
     # dialog
     if qtapp is None:
         qtapp = QtWidgets.QApplication(sys.argv)
-    return qtapp
 
 
 wasMouseVisible = True
@@ -73,16 +96,15 @@ class Dlg(QtWidgets.QDialog):
                  labelButtonCancel=_translate(" Cancel "),
                  screen=-1):
 
-        global app  # avoid recreating for every gui
-        app = ensureQtApp()
+        ensureQtApp()
         QtWidgets.QDialog.__init__(self, None, Qt.WindowTitleHint)
 
         self.inputFields = []
-        self.inputFieldTypes = []
+        self.inputFieldTypes = {}
         self.inputFieldNames = []
         self.data = []
         self.irow = 0
-
+        self.pos = pos
         # QtWidgets.QToolTip.setFont(QtGui.QFont('SansSerif', 10))
 
         # add buttons for OK and Cancel
@@ -102,8 +124,6 @@ class Dlg(QtWidgets.QDialog):
         if style:
             raise RuntimeWarning("Dlg does not currently support the "
                                  "style kwarg.")
-
-        self.pos = pos
         self.size = size
         self.screen = screen
         # self.labelButtonOK = labelButtonOK
@@ -117,6 +137,7 @@ class Dlg(QtWidgets.QDialog):
         self.setLayout(self.layout)
 
         self.setWindowTitle(title)
+
 
     def addText(self, text, color='', isFieldLabel=False):
         textLabel = QtWidgets.QLabel(text, parent=self)
@@ -147,9 +168,9 @@ class Dlg(QtWidgets.QDialog):
         """
         self.inputFieldNames.append(label)
         if choices:
-            self.inputFieldTypes.append(str)
+            self.inputFieldTypes[label] = str
         else:
-            self.inputFieldTypes.append(type(initial))
+            self.inputFieldTypes[label] = type(initial)
         if type(initial) == np.ndarray:
             initial = initial.tolist()
 
@@ -171,33 +192,32 @@ class Dlg(QtWidgets.QDialog):
             inputBox.stateChanged.connect(handleCheckboxChange)
         elif not choices:
             self.data.append(initial)
-            inputBox = QtWidgets.QLineEdit(unicode(initial), parent=self)
+            inputBox = QtWidgets.QLineEdit(str(initial), parent=self)
 
             def handleLineEditChange(new_text):
                 ix = self.inputFields.index(inputBox)
-                thisType = self.inputFieldTypes[ix]
+                name = self.inputFieldNames[ix]
+                thisType = self.inputFieldTypes[name]
 
                 try:
-                    if thisType in (str, unicode):
-                        self.data[ix] = unicode(new_text)
+                    if thisType in (str, unicode, bytes):
+                        self.data[ix] = str(new_text)
                     elif thisType == tuple:
-                        jtext = "[" + unicode(new_text) + "]"
+                        jtext = "[" + str(new_text) + "]"
                         self.data[ix] = json.loads(jtext)[0]
                     elif thisType == list:
-                        jtext = "[" + unicode(new_text) + "]"
+                        jtext = "[" + str(new_text) + "]"
                         self.data[ix] = json.loads(jtext)[0]
                     elif thisType == float:
-                        self.data[ix] = string.atof(str(new_text))
+                        self.data[ix] = float(new_text)
                     elif thisType == int:
-                        self.data[ix] = string.atoi(str(new_text))
-                    elif thisType == long:
-                        self.data[ix] = string.atol(str(new_text))
+                        self.data[ix] = int(new_text)
                     elif thisType == dict:
-                        jtext = "[" + unicode(new_text) + "]"
+                        jtext = "[" + str(new_text) + "]"
                         self.data[ix] = json.loads(jtext)[0]
                     elif thisType == np.ndarray:
                         self.data[ix] = np.array(
-                            json.loads("[" + unicode(new_text) + "]")[0])
+                            json.loads("[" + str(new_text) + "]")[0])
                     else:
                         self.data[ix] = new_text
                         msg = ("Unknown type in handleLineEditChange: "
@@ -208,7 +228,7 @@ class Dlg(QtWidgets.QDialog):
                            "type={1}, value={2}")
                     logging.debug(msg.format(label, thisType, self.data[ix]))
                 except Exception as e:
-                    self.data[ix] = unicode(new_text)
+                    self.data[ix] = str(new_text)
                     msg = ('Error in handleLineEditChange: inputFieldName='
                            '{0}, type={1}, value={2}, error={3}')
                     logging.error(msg.format(label, thisType, self.data[ix],
@@ -219,11 +239,11 @@ class Dlg(QtWidgets.QDialog):
             inputBox = QtWidgets.QComboBox(parent=self)
             choices = list(choices)
             for i, option in enumerate(choices):
-                inputBox.addItem(unicode(option))
+                inputBox.addItem(str(option))
                 # inputBox.addItems([unicode(option) for option in choices])
                 inputBox.setItemData(i, (option,))
 
-            if (isinstance(initial, (int, long)) and
+            if (isinstance(initial, (int, int)) and
                     len(choices) > initial >= 0):
                 pass
             elif initial in choices:
@@ -304,16 +324,18 @@ class Dlg(QtWidgets.QDialog):
 
         self.layout.addWidget(self.buttonBox, self.irow, 0, 1, 2)
 
-        # Center Dialog on appropriate screen
-        frameGm = self.frameGeometry()
-        desktop = QtWidgets.QApplication.desktop()
-        qtscreen = self.screen
-        if self.screen <= 0:
-            qtscreen = desktop.primaryScreen()
-        centerPoint = desktop.screenGeometry(qtscreen).center()
-        frameGm.moveCenter(centerPoint)
-        self.move(frameGm.topLeft())
-
+        if self.pos is None:
+            # Center Dialog on appropriate screen
+            frameGm = self.frameGeometry()
+            desktop = QtWidgets.QApplication.desktop()
+            qtscreen = self.screen
+            if self.screen <= 0:
+                qtscreen = desktop.primaryScreen()
+            centerPoint = desktop.screenGeometry(qtscreen).center()
+            frameGm.moveCenter(centerPoint)
+            self.move(frameGm.topLeft())
+        else:
+            self.move(self.pos[0],self.pos[1])
         QtWidgets.QDialog.show(self)
         self.raise_()
         self.activateWindow()
@@ -328,15 +350,66 @@ class DlgFromDict(Dlg):
     """Creates a dialogue box that represents a dictionary of values.
     Any values changed by the user are change (in-place) by this
     dialogue box.
+
+    Parameters
+    ----------
+
+    dictionary : dict
+        A dictionary defining the input fields (keys) and pre-filled values
+        (values) for the user dialog
+        
+    title : str
+        The title of the dialog window
+
+    labels : dict
+        A dictionary defining labels (values) to be displayed instead of
+        key strings (keys) defined in ``dictionary´´. Not all keys in
+        ``dictionary´´ need to be contained in labels.
+
+    fixed : list
+        A list of keys for which the values shall be displayed in non-editable
+        fields
+    
+    order : list
+        A list of keys defining the display order of keys in ``dictionary´´.
+        If not all keys in ``dictionary´´ are contained in ``order´´, those
+        will appear in random order after all ordered keys.
+
+    tip : list
+        A dictionary assigning tooltips to the keys
+
+    screen : int
+        Screen number where the Dialog is displayed. If -1, the Dialog will
+        be displayed on the primary screen.
+
+    sortKeys : bool
+        A boolean flag indicating that keys are to be sorted alphabetically.
+
+    copyDict : bool
+        If False, modify ``dictionary`` in-place. If True, a copy of
+        the dictionary is created, and the altered version (after
+        user interaction) can be retrieved from
+        :attr:~`psychopy.gui.DlgFromDict.dictionary`.
+        
+    labels : dict
+        A dictionary defining labels (dict values) to be displayed instead of
+        key strings (dict keys) defined in ``dictionary´´. Not all keys in
+        ``dictionary´´ need to be contained in labels.
+
+    show : bool
+        Whether to immediately display the dialog upon instantiation.
+         If False, it can be displayed at a later time by calling
+         its `show()` method.
+
     e.g.:
 
     ::
 
-        info = {'Observer':'jwp', 'GratingOri':45, 'ExpVersion': 1.1,
-                'Group': ['Test', 'Control']}
-        dictDlg = gui.DlgFromDict(dictionary=info,
-                title='TestExperiment', fixed=['ExpVersion'])
-        if dictDlg.OK:
+        info = {'Observer':'jwp', 'GratingOri':45,
+                'ExpVersion': 1.1, 'Group': ['Test', 'Control']}
+        infoDlg = gui.DlgFromDict(dictionary=info,
+                    title='TestExperiment', fixed=['ExpVersion'])
+        if infoDlg.OK:
             print(info)
         else:
             print('User Cancelled')
@@ -352,34 +425,71 @@ class DlgFromDict(Dlg):
     See GUI.py for a usage demo, including order and tip (tooltip).
     """
 
-    def __init__(self, dictionary, title='', fixed=(), order=(),
-                 tip=None, screen=-1):
+    def __init__(self, dictionary, title='', fixed=None, order=None,
+                 tip=None, screen=-1, sortKeys=True, copyDict=False,
+                 labels=None, show=True, **kwargs):
+
+        # We allowed for snake_case parameters in previous releases. This needs
+        # to end soon.
+        if 'sort_keys' in kwargs:
+            sortKeys = kwargs['sort_keys']
+            logging.warning("Parameter 'sort_keys' is deprecated. Use 'sortKeys' instead.")
+
+        if 'copy_dict' in kwargs:
+            copyDict = kwargs['copy_dict']
+            logging.warning("Parameter 'copy_dict' is deprecated. Use 'copyDict' instead.")
+        
+        # We don't explicitly check for None identity
+        # for backward-compatibility reasons.
+        if not fixed:
+            fixed = []
+        if not order:
+            order = []
+        if not labels:
+            labels = dict()
         if not tip:
-            tip = {}
+            tip = dict()
+
         Dlg.__init__(self, title, screen=screen)
-        self.dictionary = dictionary
-        keys = self.dictionary.keys()
-        keys.sort()
-        if len(order):
-            keys = order + list(set(keys).difference(set(order)))
-        types = dict([])
-        for field in keys:
-            types[field] = type(self.dictionary[field])
+
+        if copyDict:
+            self.dictionary = dictionary.copy()
+        else:
+            self.dictionary = dictionary
+
+        self._keys = list(self.dictionary.keys())
+
+        if order:
+            self._keys = list(order) + list(set(self._keys).difference(set(order)))
+        elif sortKeys:
+            self._keys.sort()
+
+        for field in self._keys:
+            label = labels[field] if field in labels else field
             tooltip = ''
-            if field in tip.keys():
+            if field in tip:
                 tooltip = tip[field]
             if field in fixed:
-                self.addFixedField(field, self.dictionary[field], tip=tooltip)
+                self.addFixedField(label, self.dictionary[field], tip=tooltip)
             elif type(self.dictionary[field]) in [list, tuple]:
-                self.addField(field, choices=self.dictionary[field],
+                self.addField(label, choices=self.dictionary[field],
                               tip=tooltip)
             else:
-                self.addField(field, self.dictionary[field], tip=tooltip)
+                self.addField(label, self.dictionary[field], tip=tooltip)
 
+        if show:
+            self.show()
+
+    def show(self):
+        """Display the dialog.
+        """
         ok_data = self.exec_()
         if ok_data:
-            for n, thisKey in enumerate(keys):
-                self.dictionary[thisKey] = ok_data[n]
+            for n, thisKey in enumerate(self._keys):
+                try:
+                    self.dictionary[thisKey] = self.inputFieldTypes[thisKey](self.data[n])
+                except ValueError:
+                    self.dictionary[thisKey] = self.data[n]
 
 
 def fileSaveDlg(initFilePath="", initFileName="",
@@ -413,13 +523,17 @@ def fileSaveDlg(initFilePath="", initFileName="",
                    "txt (*.txt);;"
                    "pickled files (*.pickle *.pkl);;"
                    "shelved files (*.shelf)")
-    global qtapp  # avoid recreating for every gui
-    qtapp = ensureQtApp()
+    ensureQtApp()
 
     fdir = os.path.join(initFilePath, initFileName)
-    r = QtWidgets.QFileDialog.getSaveFileName(parent=None, caption=prompt,
+    pathOut = QtWidgets.QFileDialog.getSaveFileName(parent=None, caption=prompt,
                                               directory=fdir, filter=allowed)
-    return unicode(r) or None
+    if type(pathOut) == tuple:  # some versions(?) of PyQt return (files, filter)
+        pathOut = pathOut[0]
+
+    if len(pathOut) == 0:
+        return None
+    return str(pathOut) or None
 
 
 def fileOpenDlg(tryFilePath="",
@@ -451,8 +565,7 @@ def fileOpenDlg(tryFilePath="",
 
     If user cancels, then None is returned.
     """
-    global qtapp  # avoid recreating for every gui
-    qtapp = ensureQtApp()
+    ensureQtApp()
 
     if allowed is None:
         allowed = ("All files (*.*);;"
@@ -468,7 +581,7 @@ def fileOpenDlg(tryFilePath="",
     if type(filesToOpen) == tuple:  # some versions(?) of PyQt return (files, filter)
         filesToOpen = filesToOpen[0]
 
-    filesToOpen = [unicode(fpath) for fpath in filesToOpen
+    filesToOpen = [str(fpath) for fpath in filesToOpen
                    if os.path.exists(fpath)]
     if len(filesToOpen) == 0:
         return None
@@ -476,29 +589,25 @@ def fileOpenDlg(tryFilePath="",
 
 
 def infoDlg(title=_translate("Information"), prompt=None):
-    global qtapp  # avoid recreating for every gui
-    qtapp = ensureQtApp()
+    ensureQtApp()
     _pr = _translate("No details provided. ('prompt' value not set).")
     QtWidgets.QMessageBox.information(None, title, prompt or _pr)
 
 
 def warnDlg(title=_translate("Warning"), prompt=None):
-    global qtapp  # avoid recreating for every gui
-    qtapp = ensureQtApp()
+    ensureQtApp()
     _pr = _translate("No details provided. ('prompt' value not set).")
     QtWidgets.QMessageBox.warning(None, title, prompt or _pr)
 
 
 def criticalDlg(title=_translate("Critical"), prompt=None):
-    global qtapp  # avoid recreating for every gui
-    qtapp = ensureQtApp()
+    ensureQtApp()
     _pr = _translate("No details provided. ('prompt' value not set).")
     QtWidgets.QMessageBox.critical(None, title, prompt or _pr)
 
 
 def aboutDlg(title=_translate("About Experiment"), prompt=None):
-    global qtapp  # avoid recreating for every gui
-    qtapp = ensureQtApp()
+    ensureQtApp()
     _pr = _translate("No details provided. ('prompt' value not set).")
     QtWidgets.QMessageBox.about(None, title, prompt or _pr)
 
@@ -571,7 +680,7 @@ if __name__ == '__main__':
                       choices=['R1', 'R2', 'R3'],
                       tip="This field is readonly.")
     ok_data = dlg.show()
-    print("Dlg ok_data:", ok_data)
+    print(("Dlg ok_data:", ok_data))
 
     # Test Dict Dialog
 
@@ -587,10 +696,10 @@ if __name__ == '__main__':
     # Test File Dialogs
 
     fileToSave = fileSaveDlg(initFileName='__init__.pyc')
-    print("fileToSave: [", fileToSave, "]", type(fileToSave))
+    print(("fileToSave: [", fileToSave, "]", type(fileToSave)))
 
     fileToOpen = fileOpenDlg()
-    print("fileToOpen:", fileToOpen)
+    print(("fileToOpen:", fileToOpen))
 
     # Test Alert Dialogs
 
@@ -606,7 +715,7 @@ if __name__ == '__main__':
              u"<br>"
              u"Written by: Dr. John Doe"
              u"<br>"
-             u"Created using <b>PsychoPy</b> © Copyright 2015, Jonathan Peirce")
+             u"Created using <b>PsychoPy</b> © Copyright 2018, Jonathan Peirce")
 
     # Restore full screen psychopy window
     # showWindow(win)

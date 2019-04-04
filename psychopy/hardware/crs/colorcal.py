@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
-# coding=utf-8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 # Acknowledgements:
@@ -12,9 +12,11 @@
 # Acknowledgements
 #    This code was written by Jon Peirce
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
-
+from builtins import bytes
+from builtins import range
+from builtins import object
 import sys
 try:
     import serial
@@ -117,7 +119,6 @@ class ColorCAL(object):
         """Send a command to the photometer and wait an alloted
         timeout for a response.
         """
-
         # flush the read buffer first
         # read as many chars as are in the buffer
         prevOut = self.com.read(self.com.inWaiting())
@@ -127,7 +128,7 @@ class ColorCAL(object):
         self.lastCmd = message
 
         if message[-2:] not in ('\n', '\n\r'):
-            message += '\n'  # append a newline if necess
+            message += "\n".encode('ascii')  # append a newline if necess
         # send the message
         self.com.write(message)
         self.com.flush()
@@ -140,16 +141,17 @@ class ColorCAL(object):
         lines = []
         thisLine = ''
         nEmpty = 0
-        while (thisLine != '>') and (nEmpty <= self.maxAttempts):
+        while (thisLine != '>'.encode('ascii')) and (nEmpty <= self.maxAttempts):
             # self.com.readline can't handle custom eol
             thisLine = self.readline(eol=eol)
-            if thisLine in (eol, '>', ''):  # lines we don't care about
+            if thisLine in (eol.encode('ascii'), '>'.encode('ascii'), ''.encode('ascii')):  # lines we don't care about
                 nEmpty += 1
                 continue
             else:
                 # line without any eol chars
-                lines.append(thisLine.rstrip(eol))
+                lines.append(thisLine.rstrip(eol.encode('ascii')))
                 nEmpty = 0
+
 
         # got all lines and reached '>'
         if len(lines) == 1:
@@ -174,11 +176,12 @@ class ColorCAL(object):
 
         """
         # use a long timeout for measurement:
-        val = self.sendMessage('MES', timeout=5)
-        vals = val.split(',')
+        val = self.sendMessage(b'MES', timeout=5)
+        valstrip = val.strip(b'\n\r>')
+        vals = valstrip.split(b',')
         ok = (vals[0] == 'OK00')
         # transform raw x,y,z by calibration matrix
-        xyzRaw = numpy.array([vals[1], vals[2], vals[3]], dtype=float)
+        xyzRaw = numpy.array([vals[1].strip(), vals[2].strip(), vals[3].strip()], dtype=float)
         X, Y, Z = numpy.dot(self.calibMatrix, xyzRaw)
         self.ok, self.lastLum = ok, Y
         return ok, X, Y, Z
@@ -203,8 +206,10 @@ class ColorCAL(object):
         Other values will be a string or None.
 
         """
-        val = self.sendMessage('IDR').split(',')
-        ok = (val[0] == 'OK00')
+        val = self.sendMessage(b'IDR')
+        valstrip = val.strip(b'\n\r>')
+        val = valstrip.split(b',')
+        ok = (val[0] == b'OK00')
         if ok:
             firmware = val[2]
             serialNum = val[4]
@@ -228,7 +233,8 @@ class ColorCAL(object):
 
         :returns: True or False
         """
-        if self.firmBuild < '877' and not self._zeroCalibrated:
+
+        if self.firmBuild < b'877' and not self._zeroCalibrated:
             return True
         else:
             return False
@@ -244,10 +250,10 @@ class ColorCAL(object):
 
             ColorCAL.getNeedsCalibrateZero()
         """
-        val = self.sendMessage("UZC", timeout=1.0)
-        if val == 'OK00':
+        val = self.sendMessage(b"UZC", timeout=1.0)
+        if val == b'OK00':
             pass
-        elif val == 'ER11':
+        elif val == b'ER11':
             logging.error(
                 "Could not calibrate ColorCAL2. Is it properly covered?")
             return False
@@ -279,9 +285,10 @@ class ColorCAL(object):
         # parsing?
         for rowN in range(3):
             rowName = 'r0%i' % (rowN + 1)
-            val = self.sendMessage(rowName, timeout=1.0)
-            vals = val.split(',')  # convert to list of values
-            if vals[0] == 'OK00' and len(vals) > 1:
+            val = self.sendMessage(rowName.encode('ascii'), timeout=1.0)
+            valstrip = val.strip(b'\n\r>')
+            vals = valstrip.split(b',')  # convert to list of values
+            if vals[0] == b'OK00' and len(vals) > 1:
                 # convert to numpy array
                 rawVals = numpy.array(vals[1:], dtype=int)
                 floats = _minolta2float(rawVals)
@@ -340,11 +347,11 @@ def _minolta2float(inVal):
     # handle single vals
     if arr.shape == ():
         if inVal < 50000:
-            return inVal / 10000.0
+            return inVal/10000.0
         else:
-            return (-inVal + 50000.0) / 10000.0
+            return (-inVal + 50000.0)/10000.0
     # handle arrays
     negs = (arr > 50000)  # find negative values
-    out = arr / 10000.0  # these are the positive values
-    out[negs] = (-arr[negs] + 50000.0) / 10000.0
+    out = arr/10000.0  # these are the positive values
+    out[negs] = (-arr[negs] + 50000.0)/10000.0
     return out

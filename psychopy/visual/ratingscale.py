@@ -1,12 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-'''A class for getting numeric or categorical ratings, e.g., a 1-to-7 scale.'''
+"""A class for getting numeric or categorical ratings, e.g., a 1-to-7 scale."""
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
-import copy
+from __future__ import absolute_import, division, print_function
+
+from builtins import str
+from builtins import range
+from past.builtins import basestring
 import sys
 import numpy
 
@@ -450,7 +455,7 @@ class RatingScale(MinimalStim):
             elif labels in [None, False]:
                 self.labelTexts = []
             else:
-                first, last = unicode(self.low), unicode(self.high)
+                first, last = str(self.low), str(self.high)
                 self.labelTexts = [first] + [''] * (diff - 1) + [last]
 
         self.scale = scale
@@ -479,7 +484,7 @@ class RatingScale(MinimalStim):
             else:
                 self.markerStart = None
                 self.markerPlaced = False
-        else:  # float(markerStart) suceeded
+        else:  # float(markerStart) succeeded
             self.markerPlacedAt = self.markerStart
             self.markerPlaced = True
         # default markerStart = 0 if needed but otherwise unspecified:
@@ -519,7 +524,7 @@ class RatingScale(MinimalStim):
         # Mouse-click-able 'accept' button pulsates (cycles its brightness
         # over frames):
         framesPerCycle = 100
-        self.pulseColor = [0.6 + 0.22 * float(numpy.cos(i / 15.65))
+        self.pulseColor = [0.6 + 0.22 * numpy.cos(i/15.65)
                            for i in range(framesPerCycle)]
 
     def _initPosScale(self, pos, size, stretch, log=True):
@@ -543,7 +548,7 @@ class RatingScale(MinimalStim):
             self.offsetVert = float(offsetVert)
         except Exception:
             if self.savedWinUnits == 'pix':
-                self.offsetVert = int(self.win.size[1] / -5.0)
+                self.offsetVert = int(self.win.size[1]/-5.0)
             else:  # default y in norm units:
                 self.offsetVert = -0.4
         # pos=(x,y) will consider x,y to be in win units, but want norm
@@ -688,7 +693,7 @@ class RatingScale(MinimalStim):
 
         if tickMarkValues:
             tickTmp = numpy.asarray(tickMarkValues, dtype=numpy.float32)
-            tickMarkPositions = (tickTmp - self.low) / self.tickMarks
+            tickMarkPositions = (tickTmp - self.low)/self.tickMarks
         else:
             # visually remap 10 ticks onto 1 tick in some conditions (=
             # cosmetic):
@@ -697,7 +702,7 @@ class RatingScale(MinimalStim):
                     int(self.tickMarks) % 10 == 0):
                 self.autoRescaleFactor = 10
                 self.tickMarks /= self.autoRescaleFactor
-            tickMarkPositions = numpy.linspace(0, 1, self.tickMarks + 1)
+            tickMarkPositions = numpy.linspace(0, 1, int(self.tickMarks) + 1)
         self.scaledPrecision = float(self.precision * self.autoRescaleFactor)
 
         # how far a left or right key will move the marker, in tick units:
@@ -712,7 +717,7 @@ class RatingScale(MinimalStim):
         # not needed if self.noMouse, but not a problem either
         pad = 0.06 * self.size
         if marker == 'hover':
-            padText = ((1. / (3 * (self.high - self.low))) *
+            padText = ((1.0/(3 * (self.high - self.low))) *
                        (self.lineRightEnd - self.lineLeftEnd))
         else:
             padText = 0
@@ -807,7 +812,7 @@ class RatingScale(MinimalStim):
             if markerColor is None or not isValidColor(markerColor):
                 markerColor = 'White'
             self.marker = PatchStim(win=self.win, units='norm',
-                                    tex='sin', mask='gauss',
+                                    tex=None, mask='gauss',
                                     color=markerColor, opacity=0.85,
                                     autoLog=False,
                                     name=self.name + '.markerGlow')
@@ -818,7 +823,7 @@ class RatingScale(MinimalStim):
                 self.markerBaseSize *= self.markerSize * 0.7
                 if self.markerSize > 1.2:
                     self.markerBaseSize *= .7
-                self.marker.setSize(self.markerBaseSize / 2., log=False)
+                self.marker.setSize(self.markerBaseSize/2.0, log=False)
         elif self.markerStyle == 'custom':
             if markerColor is None:
                 if hasattr(marker, 'color'):
@@ -840,11 +845,11 @@ class RatingScale(MinimalStim):
             if markerColor is None or not isValidColor(markerColor):
                 markerColor = 'DarkRed'
             x, y = self.win.size
-            windowRatio = float(y) / x
+            windowRatio = y/x
             self.markerSizeVert = 3.2 * self.baseSize * self.size
             circleSize = [self.markerSizeVert *
                           windowRatio, self.markerSizeVert]
-            self.markerOffsetVert = self.markerSizeVert / 2.
+            self.markerOffsetVert = self.markerSizeVert/2.0
             self.marker = Circle(self.win, size=circleSize, units='norm',
                                  lineColor=markerColor, fillColor=markerColor,
                                  name=self.name + '.markerCir', autoLog=False)
@@ -852,7 +857,6 @@ class RatingScale(MinimalStim):
         self.markerColor = markerColor
         self.markerYpos = self.offsetVert + self.markerOffsetVert
         # save initial state, restore on reset
-        self.markerOrig = copy.copy(self.marker)
 
     def _initTextElements(self, win, scale, textColor,
                           textFont, textSize, showValue, tickMarks):
@@ -871,7 +875,7 @@ class RatingScale(MinimalStim):
                 scale = ''
             else:
                 msg = u' = not at all . . . extremely = '
-                scale = unicode(self.low) + msg + unicode(self.high)
+                scale = str(self.low) + msg + str(self.high)
 
         # create the TextStim:
         self.scaleDescription = TextStim(
@@ -888,9 +892,9 @@ class RatingScale(MinimalStim):
                 vertPosTmp = -2 * self.textSizeSmall * self.size + self.offsetVert
             for i, label in enumerate(self.labelTexts):
                 # need all labels for tick position, i
-                if label:  # skip '' placeholders, no need to create them
+                if label or label is not None: # 'is not None' allows creation of '0' (zero or false) labels
                     txtStim = TextStim(
-                        win=self.win, text=unicode(label), font=textFont,
+                        win=self.win, text=str(label), font=textFont,
                         pos=[self.tickPositions[i // self.autoRescaleFactor],
                              vertPosTmp],
                         height=self.textSizeSmall, color=self.textColor,
@@ -948,7 +952,7 @@ class RatingScale(MinimalStim):
         # define a rectangle with rounded corners; for square corners, set
         # delta2 to 0
         delta = 0.025 * self.size
-        delta2 = delta / 7
+        delta2 = delta/7
         acceptBoxVertices = [
             [acceptBoxleft, acceptBoxtop - delta],
             [acceptBoxleft + delta2, acceptBoxtop - 3 * delta2],
@@ -979,13 +983,13 @@ class RatingScale(MinimalStim):
         else:
             self.keyClick = 'click line'
         if acceptPreText != 'key, click':  # non-default
-            self.keyClick = unicode(acceptPreText)
-        self.acceptText = unicode(acceptText)
+            self.keyClick = str(acceptPreText)
+        self.acceptText = str(acceptText)
 
         # create the TextStim:
         self.accept = TextStim(
             win=self.win, text=self.keyClick, font=self.textFont,
-            pos=[self.offsetHoriz, (acceptBoxtop + acceptBoxbot) / 2.],
+            pos=[self.offsetHoriz, (acceptBoxtop + acceptBoxbot)/2.0],
             italic=True, height=textSizeSmall, color=self.textColor,
             autoLog=False)
         self.accept.font = textFont
@@ -1001,11 +1005,14 @@ class RatingScale(MinimalStim):
         """
         value = min(max(mouseX, self.lineLeftEnd), self.lineRightEnd)
         # map mouseX==0 -> mid-point of tick scale:
-        _tickStretch = self.tickMarks / self.hStretchTotal
+        _tickStretch = self.tickMarks/self.hStretchTotal
         adjValue = value - self.offsetHoriz
-        markerPos = adjValue * _tickStretch + self.tickMarks / 2.
-        rounded = round(markerPos * self.scaledPrecision)
-        return rounded / self.scaledPrecision
+        markerPos = adjValue * _tickStretch + self.tickMarks/2.0
+        # We need float value in getRating(), but round() returns
+        # numpy.float64 if argument is numpy.float64 in Python3.
+        # So we have to convert return value of round() to float.
+        rounded = float(round(markerPos * self.scaledPrecision))
+        return rounded/self.scaledPrecision
 
     def _getMarkerFromTick(self, tick):
         """Convert a requested tick value into a position on internal scale.
@@ -1015,7 +1022,7 @@ class RatingScale(MinimalStim):
         # ensure its on the line:
         value = max(min(self.high, tick), self.low)
         # set requested precision:
-        value = round(value * self.scaledPrecision) / self.scaledPrecision
+        value = round(value * self.scaledPrecision)//self.scaledPrecision
         return (value - self.low) * self.autoRescaleFactor
 
     def setMarkerPos(self, tick):
@@ -1060,8 +1067,33 @@ class RatingScale(MinimalStim):
         self.noResponse = False
         self.history.append((self.getRating(), self.getRT()))
         if log and self.autoLog:
-            vals = (self.name, triggeringAction, unicode(self.getRating()))
+            vals = (self.name, triggeringAction, str(self.getRating()))
             logging.data('RatingScale %s: (%s) rating=%s' % vals)
+
+    def setYPos(self, newPos = None):
+        """
+        This function can be called by the user to change the Y-positioning of the rating scale.
+        X location remains unchanged.
+        """
+        oldXPos, oldYPos = self.offsetHoriz, self.offsetVert
+        if not newPos is None:
+            if len(list(newPos)) == 2:
+                offsetHoriz, offsetVert = newPos
+        self.offsetHoriz = float(offsetHoriz)
+        self.offsetVert = float(offsetVert)
+        for positions in self.visualDisplayElements: # change location of elements based on position arg
+            if not positions.pos is None:
+                if 'ShapeStim' in str(type(positions)):
+                    offsetY = abs(oldYPos - positions.pos[1])
+                    positions.setPos([positions.pos[0], self.offsetVert + offsetY])
+                    if '.line' in positions.name:# then change Y location of marker and mouse click box
+                        self.markerYpos = self.offsetVert
+                        self.nearLine[0][1],self.nearLine[3][1] = offsetVert-.072, offsetVert-.072
+                        self.nearLine[1][1], self.nearLine[2][1] = offsetVert +.072, offsetVert + .072
+                if 'TextStim' in str(type(positions)):
+                    offsetY = abs(oldYPos-positions.pos[1])
+                    positions.setPos([positions.pos[0], self.offsetVert - offsetY])
+
 
     def draw(self, log=True):
         """Update the visual display, check for response (key, mouse, skip).
@@ -1140,7 +1172,7 @@ class RatingScale(MinimalStim):
             # update position:
             if self.singleClick and mouseNearLine:
                 self.setMarkerPos(self._getMarkerFromPos(mouseX))
-            proportion = self.markerPlacedAt / self.tickMarks
+            proportion = self.markerPlacedAt/self.tickMarks
             # expansion for 'glow', based on proportion of total line
             if self.markerStyle == 'glow' and self.markerExpansion != 0:
                 if self.markerExpansion > 0:
@@ -1166,7 +1198,7 @@ class RatingScale(MinimalStim):
                 self.accept.setColor(self.acceptTextColor, log=False)
                 if self.showValue and self.markerPlacedAt is not False:
                     if self.choices:
-                        val = unicode(self.choices[int(self.markerPlacedAt)])
+                        val = str(self.choices[int(self.markerPlacedAt)])
                     elif self.precision == 60:
                         valTmp = self.markerPlacedAt + self.low
                         minutes = int(valTmp)  # also works for hours:minutes
@@ -1192,7 +1224,7 @@ class RatingScale(MinimalStim):
                     self.markerPlacedBySubject = True
                     resp = self.tickFromKeyPress[key]
                     self.markerPlacedAt = self._getMarkerFromTick(resp)
-                    proportion = self.markerPlacedAt / self.tickMarks
+                    proportion = self.markerPlacedAt/self.tickMarks
                     self.marker.setPos(
                         [self.size * (-0.5 + proportion), 0], log=False)
                 if self.markerPlaced and self.beyondMinTime:
@@ -1293,9 +1325,14 @@ class RatingScale(MinimalStim):
         """
         # only resets things that are likely to have changed when the
         # ratingScale instance is used by a subject
+        # reset label color if using hover
+        if self.markerStyle == 'hover':
+            for labels in self.labels:
+                labels.setColor(self.textColor, log=False)
         self.noResponse = True
         # restore in case it turned gray, etc
-        self.marker = copy.copy(self.markerOrig)
+        self.resetMarker = str(self.marker)
+        self.resetMarker = self.resetMarker.replace('Window(...)', 'self.win')
         # placed by subject or markerStart: show on screen
         self.markerPlaced = False
         # placed by subject is actionable: show value, singleClick

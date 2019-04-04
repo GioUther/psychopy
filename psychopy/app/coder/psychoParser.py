@@ -1,11 +1,18 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 # python text parser
 # this is really just for the purpose of constructing code analysis in
 # python scripts
 
+from __future__ import absolute_import, print_function
+
+from builtins import next
+from builtins import object
 import pyclbr
 import tokenize
 
@@ -50,13 +57,13 @@ def getTokensAndImports(buffer):
                     prevTok = prevTok.prev
 
             # do we have that token already?
-            if defineStr in definedTokens.keys():
+            if defineStr in definedTokens:
                 continue
             else:
                 # try to identify what new token =
                 definingStr = ''
                 while True:  # fetch the name of the object being defined
-                    nextTok = gen.next()
+                    nextTok = next(gen)
                     if nextTok[0] != 1 and nextTok[1] != '.':
                         break  # we have the full name
                     else:

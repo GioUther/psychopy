@@ -1,5 +1,5 @@
-#!/usr/bin/env python2
-# encoding: utf-8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """voicekey: A toolkit for programming virtual voice-keys.
 
@@ -11,8 +11,10 @@ _BaseVoiceKey is the main abstract class. Subclass and override the detect()
 method. See SimpleThresholdVoiceKey or OnsetVoiceKey for examples.
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
+from builtins import range
+from builtins import object
 __version__ = 0.5
 
 import sys
@@ -80,7 +82,8 @@ class _BaseVoiceKey(object):
                     possible (by calling .save() but not called automatically upon
                     stopping
 
-                'chnl_in' : microphone channel; see pyo.pa_get_input_devices()
+                'chnl_in' : microphone channel;
+                    see psychopy.sound.backend.get_input_devices()
 
                 'chnl_out': not implemented; output device to use
 

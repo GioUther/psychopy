@@ -1,12 +1,13 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
 Demo of TrialHandler
 """
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
+from builtins import range
 from random import random
 from psychopy import data
 
@@ -20,7 +21,8 @@ for ori in range(90, 180, 30):
         stimList.append({'sf':sf, 'ori':ori})
 
 # organize them with the trial handler
-trials = data.TrialHandler2(stimList, 10, extraInfo= {'participant':"Nobody", 'session':1})
+trials = data.TrialHandler2(stimList, 10,
+                            extraInfo= {'participant':"Nobody", 'session':'001'})
 
 # run the experiment
 nDone = 0

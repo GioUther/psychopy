@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """This is for general purpose dialogs/widgets, not particular functionality
 
 MessageDialog:
@@ -10,21 +13,25 @@ ListWidget:
     the user to add/remove entries. e.g. expInfo control
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
+from builtins import str
+from builtins import range
 import wx
 from wx.lib.newevent import NewEvent
 
 from psychopy import logging
-from .localization import _translate
+from psychopy.localization import _translate
+from pkg_resources import parse_version
 
 
 class MessageDialog(wx.Dialog):
-    """For some reason the wx built-in message dialog has issues on Mac OS X
+    """For some reason the wx built-in message dialog has issues on macOS
     (buttons don't always work) so we need to use this instead.
     """
 
-    def __init__(self, parent=None, message='', type='Warning', title=None):
+    def __init__(self, parent=None, message='', type='Warning', title=None,
+                 timeout=None):
         # select and localize a title
         if not title:
             title = type
@@ -65,6 +72,7 @@ class MessageDialog(wx.Dialog):
         sizer.Add(btnSizer, flag=wx.ALIGN_RIGHT | wx.ALL, border=5)
         self.Center()
         self.SetSizerAndFit(sizer)
+        self.timeout = timeout
 
     def onButton(self, event):
         self.EndModal(event.GetId())
@@ -72,6 +80,14 @@ class MessageDialog(wx.Dialog):
     def onEscape(self, event):
         self.EndModal(wx.ID_CANCEL)
 
+    def onEnter(self, event=None):
+        self.EndModal(wx.ID_OK)
+
+    def ShowModal(self):
+        if self.timeout:
+            timeout = wx.CallLater(self.timeout, self.onEnter)
+            timeout.Start()
+        return wx.Dialog.ShowModal(self)
 
 # Event for GlobSizer-----------------------------------------------------
 (GBSizerExLayoutEvent, EVT_GBSIZEREX_LAYOUT) = NewEvent()
@@ -105,7 +121,7 @@ class GlobSizer(wx.GridBagSizer):
 
     def _setSpan(self, objs):
         # Respans all items containing the given objects.
-        for obj, span in objs.items():
+        for obj, span in list(objs.items()):
             if obj:
                 self.FindItem(obj).SetSpan(span)
 
@@ -170,12 +186,12 @@ class GlobSizer(wx.GridBagSizer):
         return idx in self.growableCols
 
     def GetGrowableRows(self):
-        grows = self.growableRows.keys()
+        grows = list(self.growableRows.keys())
         grows.sort()
         return grows
 
     def GetGrowableCols(self):
-        gcols = self.growableCols.keys()
+        gcols = list(self.growableCols.keys())
         gcols.sort()
         return gcols
 
@@ -218,7 +234,7 @@ class GlobSizer(wx.GridBagSizer):
             item = self.FindItemAtPosition((row, c))
             if item:
                 rs, cs = item.GetSpan().Get()
-                if rs > 1 and item.GetPos().GetRow() <> row:
+                if rs > 1 and item.GetPos().GetRow() != row:
                     _update_span[item.GetWindow()] = (rs + 1, cs)
         # 2. Unspan all objects.
         objs = self._resetSpan()
@@ -228,7 +244,7 @@ class GlobSizer(wx.GridBagSizer):
         objs.update(_update_span)
         self._setSpan(objs)
         # 5. Update references to growable rows.
-        grows = self.growableRows.keys()
+        grows = list(self.growableRows.keys())
         for r in grows:
             if r >= row:
                 self.RemoveGrowableRow(r)
@@ -245,7 +261,7 @@ class GlobSizer(wx.GridBagSizer):
             item = self.FindItemAtPosition((r, col))
             if item:
                 rs, cs = item.GetSpan().Get()
-                if cs > 1 and item.GetPos().GetCol() <> col:
+                if cs > 1 and item.GetPos().GetCol() != col:
                     _update_span[item.GetWindow()] = (rs, cs + 1)
         # 2. Unspan all objects.
         objs = self._resetSpan()
@@ -255,7 +271,7 @@ class GlobSizer(wx.GridBagSizer):
         objs.update(_update_span)
         self._setSpan(objs)
         # 5. Update references to growable cols.
-        gcols = self.growableCols.keys()
+        gcols = list(self.growableCols.keys())
         for c in gcols:
             if c >= col:
                 self.RemoveGrowableCol(c)
@@ -280,7 +296,7 @@ class GlobSizer(wx.GridBagSizer):
         # 2. Unspan all objects.
         objs = self._resetSpan()
         # 3. Move the _update_span objects to an adjacent row somewhere safe.
-        for obj in _update_span.keys():
+        for obj in _update_span:
             item = self.FindItem(obj)
             org_r, org_c = item.GetPos().Get()
             if org_r == row:
@@ -298,7 +314,7 @@ class GlobSizer(wx.GridBagSizer):
         objs.update(_update_span)
         self._setSpan(objs)
         # 7. Update references to growable rows.
-        grows = self.growableRows.keys()
+        grows = list(self.growableRows.keys())
         for r in grows:
             if r >= row:
                 self.RemoveGrowableRow(r)
@@ -323,7 +339,7 @@ class GlobSizer(wx.GridBagSizer):
         # 2. Unspan all objects.
         objs = self._resetSpan()
         # 3. Move the _update_span objects to an adjacent col somewhere safe.
-        for obj in _update_span.keys():
+        for obj in _update_span:
             item = self.FindItem(obj)
             org_r, org_c = item.GetPos().Get()
             if org_c == col:
@@ -341,7 +357,7 @@ class GlobSizer(wx.GridBagSizer):
         objs.update(_update_span)
         self._setSpan(objs)
         # 7. Update references to growable cols.
-        gcols = self.growableCols.keys()
+        gcols = list(self.growableCols.keys())
         for c in gcols:
             if c >= col:
                 self.RemoveGrowableCol(c)
@@ -371,6 +387,7 @@ class GlobSizer(wx.GridBagSizer):
 
     def ShiftRowsDown(self, startRow, endRow=None, startCol=None,
                       endCol=None):
+
         if endCol is None:
             endCol = self.GetCols()
         else:
@@ -382,7 +399,7 @@ class GlobSizer(wx.GridBagSizer):
         if startCol is None:
             startCol = 0
         for c in range(startCol, endCol):
-            for r in range(endRow, startRow - 1, -1):
+            for r in range(endRow, startRow, -1):
                 item = self.FindItemAtPosition((r, c))
                 if item:
                     w = item.GetWindow()
@@ -443,7 +460,7 @@ class GlobSizer(wx.GridBagSizer):
                 rows2delete.append(r)
         for i in range(0, len(rows2delete)):
             self.ShiftRowsUp(rows2delete[i] + 1)
-            rows2delete = map(lambda x: x - 1, rows2delete)
+            rows2delete = [x - 1 for x in rows2delete]
 
     def DeleteEmptyCols(self):
         cols2delete = []
@@ -456,7 +473,7 @@ class GlobSizer(wx.GridBagSizer):
                 cols2delete.append(c)
         for i in range(0, len(cols2delete)):
             self.ShiftColsLeft(cols2delete[i] + 1)
-            cols2delete = map(lambda x: x - 1, cols2delete)
+            cols2delete = [x - 1 for x in cols2delete]
 
     def Insert(self, *args, **kwargs):
         # Uses the API for the Add method, plus a kwarg named shiftDirection,
@@ -500,9 +517,9 @@ class ListWidget(GlobSizer):
         self.value = value or [{}]
         if type(value) != list or len(value) < 1:
             msg = 'The initial value for a ListWidget must be a list of dicts'
-            raise AttributeError, msg
+            raise AttributeError(msg)
         # sort fieldNames using order information where possible
-        allNames = value[0].keys()
+        allNames = list(value[0].keys())
         self.fieldNames = []
         if order is None:
             order = []
@@ -531,7 +548,7 @@ class ListWidget(GlobSizer):
 
     def addEntryCtrls(self, row, entry):
         for col, field in enumerate(self.fieldNames):
-            c = wx.TextCtrl(self.parent, -1, unicode(entry[field]))
+            c = wx.TextCtrl(self.parent, -1, str(entry[field]))
             self.Add(c, (row, col), flag=wx.ALL)
         plusBtn = wx.Button(self.parent, -1, '+', style=wx.BU_EXACTFIT)
         self.Add(plusBtn, (row, col + 1), flag=wx.ALL)
@@ -544,12 +561,12 @@ class ListWidget(GlobSizer):
         """The plus button has been pressed
         """
         btn = self.FindItem(event.GetEventObject())
-        row, col = btn.GetPosTuple()
+        row, col = btn.GetPos()
         self.InsertRow(row)
         newEntry = {}
         for fieldName in self.fieldNames:
             newEntry[fieldName] = ""
-        self.addEntryCtrls(row, newEntry)
+        self.addEntryCtrls(row + 1, newEntry)
         self.Layout()
         self.parent.Fit()
 
@@ -557,7 +574,7 @@ class ListWidget(GlobSizer):
         """Called when the minus button is pressed.
         """
         btn = self.FindItem(event.GetEventObject())
-        row, col = btn.GetPosTuple()
+        row, col = btn.GetPos()
         self.DeleteRow(row)
         self.Layout()
         self.parent.Fit()
@@ -589,7 +606,7 @@ class ListWidget(GlobSizer):
 
 
 if __name__ == '__main__':
-    if wx.version() < '2.9':
+    if parse_version(wx.__version__) < parse_version('2.9'):
         app = wx.PySimpleApp()
     else:
         app = wx.App(False)

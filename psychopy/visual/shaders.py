@@ -1,11 +1,14 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 """shaders programs for either pyglet or pygame
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
 from ctypes import (byref, cast, c_int, c_char, c_char_p,
                     POINTER, create_string_buffer)
@@ -33,7 +36,9 @@ def compileProgram(vertexSource=None, fragmentSource=None):
         """Compile shader source of given type (only needed by compileProgram)
         """
         shader = GL.glCreateShaderObjectARB(shaderType)
-
+        # if Py3 then we need to convert our (unicode) str into bytes for C
+        if type(source) != bytes:
+            source = source.encode()
         prog = c_char_p(source)
         length = c_int(-1)
         GL.glShaderSourceARB(shader,
@@ -48,7 +53,7 @@ def compileProgram(vertexSource=None, fragmentSource=None):
         if not status.value:
             print_log(shader)
             GL.glDeleteShader(shader)
-            raise ValueError, 'Shader compilation failed'
+            raise ValueError('Shader compilation failed')
         return shader
 
     program = GL.glCreateProgramObjectARB()
@@ -101,13 +106,20 @@ fragFBOtoFrame = '''
     }
     '''
 
+# for stimuli with no texture (e.g. shapes)
 fragSignedColor = '''
-    uniform sampler2D texture;
     void main() {
-        vec4 textureFrag = texture2D(texture,gl_TexCoord[0].st);
-        gl_FragColor.a = gl_Color.a*textureFrag.a;
+        gl_FragColor.rgb = ((gl_Color.rgb*2.0-1.0)+1.0)/2.0;
+        gl_FragColor.a = gl_Color.a;
     }
     '''
+fragSignedColor_adding = '''
+    void main() {
+        gl_FragColor.rgb = (gl_Color.rgb*2.0-1.0)/2.0;
+        gl_FragColor.a = gl_Color.a;
+    }
+    '''
+# for stimuli with just a colored texture
 fragSignedColorTex = '''
     uniform sampler2D texture;
     void main() {
@@ -134,6 +146,7 @@ fragSignedColorTexFont = '''
         gl_FragColor.a = gl_Color.a*textureFrag.a;
     }
     '''
+# for stimuli with a colored texture and a mask (gratings, etc.)
 fragSignedColorTexMask = '''
     uniform sampler2D texture, mask;
     void main() {
@@ -152,6 +165,7 @@ fragSignedColorTexMask_adding = '''
         gl_FragColor.rgb = textureFrag.rgb * (gl_Color.rgb*2.0-1.0)/2.0;
     }
     '''
+# RadialStim uses a 1D mask with a 2D texture
 fragSignedColorTexMask1D = '''
     uniform sampler2D texture;
     uniform sampler1D mask;
@@ -194,6 +208,7 @@ fragImageStim_adding = '''
         gl_FragColor.rgb = (textureFrag.rgb*2.0-1.0)*(gl_Color.rgb*2.0-1.0)/2.0;
     }
     '''
+# in every case our vertex shader is simple (we don't transform coords)
 vertSimple = """
     void main() {
             gl_FrontColor = gl_Color;

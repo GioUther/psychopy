@@ -27,7 +27,7 @@
 # General settings
 [general]
     # which system to use as a backend for drawing
-    winType = option('pyglet', 'pygame', default='pyglet')
+    winType = option('pyglet', 'pygame', 'glfw', default='pyglet')
     # the default units for windows and visual stimuli
     units = option('deg', 'norm', 'cm', 'pix', 'height', default='norm')
     # full screen is best for accurate timing
@@ -38,16 +38,12 @@
     version = string(default='')
     # Add paths here to your custom Python modules
     paths=list(default=list())
-    # choice of audio library
-    audioLib = list(default=list('pyo', 'pygame'))
-    # audio driver to use
-    audioDriver = list(default=list('portaudio'))
-    # audio device to use (if audioLib allows control)
-    audioDevice = list(default=list('default'))
     # path to flac (lossless audio compression) on this operating system
     flac = string(default='')
-    # a list of parallel ports
-    parallelPorts = list(default=list('/dev/parport0', '/dev/parport1'))
+    # Shutdown keys, following the pyglet naming scheme.
+    shutdownKey = string(default='')
+    # Modifier keys for shutdown keys
+    shutdownKeyModifiers = list(default=list())
 
 # Application settings, applied to coder, builder, & prefs windows
 [app]
@@ -88,8 +84,6 @@
     reloadPrevFiles = boolean(default=True)
     # for coder shell window, which shell to use
     preferredShell = option('ipython','pyshell',default='pyshell')
-    # newline for python files: unix = \n, dos = \r\n
-    newlineConvention = option('keep','unix','dos',default='keep')
 
 # Settings for the Builder window
 [builder]
@@ -98,7 +92,7 @@
     # if False will create scripts with an 'easier' but more cluttered namespace
     unclutteredNamespace = boolean(default=False)
     # folder names for custom components; expects a comma-separated list
-    componentsFolders = list(default=list('/Users/Shared/PsychoPy2/components'))
+    componentsFolders = list(default=list('/Users/Shared/PsychoPy3/components'))
     # a list of components to hide (eg, because you never use them)
     hiddenComponents = list(default=list('PatchComponent'))
     # where the Builder demos are located on this computer (after unpacking)
@@ -111,6 +105,18 @@
     alwaysShowReadme = boolean(default=True)
     # Upper limit on how many components can be in favorites
     maxFavorites = integer(default=10)
+
+[hardware]
+    # choice of audio library
+    audioLib = list(default=list('sounddevice', 'pyo', 'pygame'))
+    # audio driver to use
+    audioDriver = list(default=list('portaudio'))
+    # audio device to use (if audioLib allows control)
+    audioDevice = list(default=list('default'))
+    # a list of parallel ports
+    parallelPorts = list(default=list('/dev/parport0', '/dev/parport1'))
+    # The name of the Qmix pump configuration to use
+    qmixConfiguration = string(default='qmix_config')
 
 # Settings for connections
 [connections]
@@ -172,8 +178,14 @@
     comment = string(default="Ctrl+'")
     # Coder: remove # from start of line(s)
     uncomment = string(default="Ctrl+Shift+'")
+    # Coder: add or remove # from start of line(s)
+    toggle comment = string(default="Ctrl+/")
     # Coder: fold this block of code
     fold = string(default='Ctrl+Home')
+    # Coder: increase font size this block of code
+    enlargeFont = string(default='Ctrl+=')
+    # Coder: decrease font size this block of code
+    shrinkFont = string(default='Ctrl+-')
 
     # Coder: check for basic syntax errors
     analyseCode = string(default='F4')
@@ -218,9 +230,15 @@
     #show or hide the readme (info) for this experiment if possible
     toggleReadme = string(default='Ctrl+I')
 
-    # Projects: Log in
-    projectsLogIn = string(default='Ctrl+Alt+I')
+    # Projects: Log in to pavlovia
+    pavlovia_logIn = string(default='Ctrl+Alt+I')
+    # Projects: Log in to OSF
+    OSF_logIn = string(default='Ctrl+Alt+Shift+I')
+    # Projects: Sync project
     projectsSync = string(default='Ctrl+Alt+Y')
-    projectsFind = string(default='Ctrl+Alt+F')
+    # Projects: Find projects
+    projectsFind = string(default='Ctrl+Shift+F')
+    # Projects: Open project
     projectsOpen = string(default='Ctrl+Alt+O')
+    # Projects: Create new project
     projectsNew = string(default='Ctrl+Alt+N')

@@ -1,12 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 """A stimulus class for playing movies (mpeg, avi, etc...) in PsychoPy.
 """
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
+from __future__ import absolute_import, division, print_function
+
+from builtins import next
+from builtins import str
 import sys
 import os
 
@@ -46,12 +51,13 @@ import psychopy.event
 from psychopy.tools.arraytools import val2array
 from psychopy.tools.attributetools import logAttrib, setAttribute
 from psychopy.visual.basevisual import BaseVisualStim, ContainerMixin
+from psychopy.tools.filetools import pathToString
 
 if sys.platform == 'win32' and not haveAvbin:
-    logging.error("avbin.dll failed to load. "
-                  "Try importing psychopy.visual as the first library "
-                  "(before anything that uses scipy) "
-                  "and make sure that avbin is installed.")
+    logging.warning("avbin.dll failed to load. "
+                    "Try importing psychopy.visual as the first library "
+                    "(before anything that uses scipy) or use a different"
+                    "movie backend (e.g. moviepy).")
 
 import numpy
 try:
@@ -139,7 +145,7 @@ class MovieStim(BaseVisualStim, ContainerMixin):
             # pyglet 1.1.4?
             self._player_default_on_eos = self._player._on_eos
 
-        self.filename = filename
+        self.filename = pathToString(filename)
         self.duration = None
         self.loop = loop
         if loop and pyglet.version >= '1.2':
@@ -194,6 +200,7 @@ class MovieStim(BaseVisualStim, ContainerMixin):
         After the file is loaded MovieStim.duration is updated with the movie
         duration (in seconds).
         """
+        filename = pathToString(filename)
         try:
             self._movie = pyglet.media.load(filename, streaming=True)
         except Exception as e:
@@ -212,7 +219,7 @@ class MovieStim(BaseVisualStim, ContainerMixin):
         self._player.queue(self._movie)
         self.duration = self._movie.duration
         while self._player.source != self._movie:
-            self._player.next()
+            next(self._player)
         self.status = NOT_STARTED
         self._player.pause()  # start 'playing' on the next draw command
         self.filename = filename
@@ -374,6 +381,6 @@ class MovieStim(BaseVisualStim, ContainerMixin):
 
     def __del__(self):
         try:
-            self._player.next()
+            next(self._player)
         except Exception:
             pass

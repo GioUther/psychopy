@@ -1,19 +1,22 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+# Part of the PsychoPy library
+# Copyright (C) 2018 Jonathan Peirce
+# Distributed under the terms of the GNU General Public License (GPL).
 
 """This module has tools for fetching data about the system or the
 current Python process. Such info can be useful for understanding
 the context in which an experiment was run.
 """
 
-# Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
-# Distributed under the terms of the GNU General Public License (GPL).
+from __future__ import absolute_import, division, print_function
 
-from __future__ import absolute_import
-
+from builtins import str
 import sys
 import os
 import platform
+import io
 
 from pyglet.gl import gl_info, GLint, glGetIntegerv, GL_MAX_ELEMENTS_VERTICES
 import numpy
@@ -35,6 +38,7 @@ from psychopy import visual, logging, core, data, web
 from psychopy.core import shellCall
 from psychopy.platform_specific import rush
 from psychopy import __version__ as psychopyVersion
+from psychopy.constants import PY3
 
 
 class RunTimeInfo(dict):
@@ -82,7 +86,7 @@ class RunTimeInfo(dict):
                 True = assess without a visual
 
             userProcsDetailed: *False*, True
-                get details about concurrent user's processses
+                get details about concurrent user's processes
                 (command, process-ID)
 
         :Returns:
@@ -165,7 +169,7 @@ class RunTimeInfo(dict):
         if not author or not version:
             lines = ''
             if os.path.isfile(sys.argv[0]):
-                with open(sys.argv[0], 'rU') as f:
+                with io.open(sys.argv[0], 'r', encoding='utf-8-sig') as f:
                     lines = f.read()
             if not author and '__author__' in lines:
                 linespl = lines.splitlines()
@@ -226,9 +230,6 @@ class RunTimeInfo(dict):
     def _setSystemInfo(self):
         """System info
         """
-        # system encoding
-        osEncoding = sys.getfilesystemencoding()
-
         # machine name
         self['systemHostName'] = platform.node()
 
@@ -319,26 +320,37 @@ class RunTimeInfo(dict):
             self['systemSec.pythonSSL'] = False
 
         # pyo for sound:
-        try:
-            travis = bool(str(os.environ.get('TRAVIS')).lower() == 'true')
-            assert not travis  # skip sound-related stuff on travis-ci.org
-
-            import pyo
-            self['systemPyoVersion'] = '%i.%i.%i' % pyo.getVersion()
+        if PY3:
+            import importlib.util
+            if importlib.util.find_spec('pyo') is not None:
+                self['systemPyoVersion'] = '-'
+        else:
+            import imp
             try:
-                # requires pyo svn r1024 or higher:
-                inp, out = pyo.pa_get_devices_infos()
-                for devList in [inp, out]:
-                    for key in devList.keys():
-                        if isinstance(devList[key]['name'], str):
-                            devList[key]['name'] = devList[
-                                key]['name'].decode(osEncoding)
-                self['systemPyo.InputDevices'] = inp
-                self['systemPyo.OutputDevices'] = out
-            except AttributeError:
+                imp.find_module('pyo')
+                self['systemPyoVersion'] = '-'
+            except:
                 pass
-        except (AssertionError, ImportError):
-            pass
+        # try:
+        #     travis = bool(str(os.environ.get('TRAVIS')).lower() == 'true')
+        #     assert not travis  # skip sound-related stuff on travis-ci.org
+        # 
+        #     import pyo
+        #     self['systemPyoVersion'] = '%i.%i.%i' % pyo.getVersion()
+        #     try:
+        #         # requires pyo svn r1024 or higher:
+        #         import psychopy.sound
+        #         inp, out = psychopy.sound.get_devices_infos()
+        #         for devList in [inp, out]:
+        #             for key in devList:
+        #                 if isinstance(devList[key]['name'], str):
+        #                     devList[key]['name'] = devList[key]['name']
+        #         self['systemPyo.InputDevices'] = inp
+        #         self['systemPyo.OutputDevices'] = out
+        #     except AttributeError:
+        #         pass
+        # except (AssertionError, ImportError):
+        #     pass
 
         # flac (free lossless audio codec) for google-speech:
         flacv = ''
@@ -471,7 +483,7 @@ class RunTimeInfo(dict):
                        'monitor', 'pos', 'screen', 'rgb', 'size']
         winAttrListVerbose = ['allowGUI', 'useNativeGamma',
                               'recordFrameIntervals', 'waitBlanking',
-                              '_haveShaders', '_refreshThreshold']
+                              '_haveShaders', 'refreshThreshold']
         if verbose:
             winAttrList += winAttrListVerbose
 
@@ -559,17 +571,17 @@ class RunTimeInfo(dict):
         """Return a string that is a legal python (dict), and close
         to YAML, .ini, and configObj syntax
         """
-        info = '{\n#[ PsychoPy2 RuntimeInfoStart ]\n'
+        info = '{\n#[ PsychoPy3 RuntimeInfoStart ]\n'
         sections = ['PsychoPy', 'Experiment',
                     'System', 'Window', 'Python', 'OpenGL']
         for sect in sections:
             info += '  #[[ %s ]] #---------\n' % (sect)
-            sectKeys = [k for k in self.keys(
-            ) if k.lower().find(sect.lower()) == 0]
+            sectKeys = [k for k in list(self.keys(
+            )) if k.lower().find(sect.lower()) == 0]
             # get keys for items matching this section label;
             #  use reverse-alpha order if easier to read:
             revSet = ('PsychoPy', 'Window', 'Python', 'OpenGL')
-            sectKeys.sort(key=str.lower, reverse=bool(sect in revSet))
+            sectKeys.sort(reverse=bool(sect in revSet))
             for k in sectKeys:
                 selfk = self[k]  # alter a copy for display purposes
                 try:
@@ -598,7 +610,7 @@ class RunTimeInfo(dict):
                 # in an archive
                 if k != 'systemUserProcFlaggedPID':
                     info += '    "%s": "%s",\n' % (k, selfk)
-        info += '#[ PsychoPy2 RuntimeInfoEnd ]\n}\n'
+        info += '#[ PsychoPy3 RuntimeInfoEnd ]\n}\n'
         return info
 
     def __str__(self):
@@ -629,9 +641,9 @@ def _getHashGitHead(gdir='.'):
         return None  # no git
     git_branches = subprocess.check_output('git branch', cwd=gdir, shell=True)
     git_branch = [line.split()[1] for line in git_branches.splitlines()
-                  if line.startswith('*')]
+                  if line.startswith(b'*')]
     if len(git_branch):
-        return git_branch[0] + ' ' + git_hash.strip()
+        return "{} {}".format(git_branch[0], git_hash.strip())
     else:
         return '(unknown branch)'
 

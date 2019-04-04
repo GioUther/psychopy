@@ -1,17 +1,43 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Audio capture and analysis using pyo"""
 
 # Part of the PsychoPy library
-# Copyright (C) 2015 Jonathan Peirce
+# Copyright (C) 2018 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
+
+"""Audio capture and analysis using pyo"""
 
 # Author: Jeremy R. Gray, March 2012, March 2013
 
-from __future__ import division
+from __future__ import absolute_import, division, print_function
+
+# from future import standard_library
+# standard_library.install_aliases()
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 import os
 import glob
 import threading
-import urllib2
+from psychopy.constants import PY3
+from psychopy.tools.filetools import pathToString
+
+if PY3:
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+else:
+    import urllib2
+    # import urllib.request, urllib.error, urllib.parse
+
+    class FakeURLlib(object):
+
+        def __init__(self, lib):
+            self.request = lib
+            self.error = lib
+            self.parse = lib
+    urllib = FakeURLlib(urllib2)
+
 import json
 import numpy as np
 from scipy.io import wavfile
@@ -84,8 +110,9 @@ class AudioCapture(object):
 
         def run(self, filename, sec, sampletype=0, buffering=16,
                 chnl=0, chnls=2):
+            filename = pathToString(filename)
             self.running = True
-            # chnl from pyo.pa_get_input_devices()
+            # chnl from psychopy.sound.backend.get_input_devices()
             inputter = pyo.Input(chnl=chnl, mul=1)
             self.recorder = pyo.Record(inputter, filename, chnls=chnls,
                                        fileformat=0, sampletype=sampletype,
@@ -126,6 +153,7 @@ class AudioCapture(object):
                                   ' before AudioCapture or AdvancedCapture')
         self.name = name
         self.saveDir = saveDir
+        filename = pathToString(filename)
         if filename:
             self.wavOutFilename = filename
         else:
@@ -134,7 +162,7 @@ class AudioCapture(object):
             self.wavOutFilename = os.path.abspath(self.wavOutFilename)
         else:
             if not os.path.isdir(self.saveDir):
-                os.makedirs(self.saveDir, 0770)
+                os.makedirs(self.saveDir, 0o770)
 
         self.onset = None  # becomes onset time, used in filename
         self.savedFile = False  # becomes saved file name
@@ -194,6 +222,7 @@ class AudioCapture(object):
         return self._record(sec, filename=filename, block=block)
 
     def _record(self, sec, filename='', block=True, log=True):
+        filename = pathToString(filename)
         while self.recorder.running:
             pass
         self.duration = float(sec)
@@ -218,7 +247,7 @@ class AudioCapture(object):
         t0 = core.getTime()
         self.recorder.run(self.savedFile, self.duration, **self.options)
 
-        self.rate = sound.pyoSndServer.getSamplingRate()
+        self.rate = sound.backend.pyoSndServer.getSamplingRate()
         if block:
             core.wait(self.duration, 0)
             if log and self.autoLog:
@@ -399,7 +428,7 @@ class AdvAudioCapture(AudioCapture):
                             ' will not be able to auto-detect onset')
         else:
             self.marker_hz = float(tone)
-            sampleRate = sound.pyoSndServer.getSamplingRate()
+            sampleRate = sound.backend.pyoSndServer.getSamplingRate()
             if sampleRate < 2 * self.marker_hz:
                 # NyquistError
                 msg = ("Recording rate (%i Hz) too slow for %i Hz-based"
@@ -537,6 +566,7 @@ def getMarkerOnset(filename, chunk=128, secs=0.5, marker_hz=19000,
 def readWavFile(filename):
     """Return (data, sampleRate) as read from a wav file, expects int16 data.
     """
+    filename = pathToString(filename)
     try:
         sampleRate, data = wavfile.read(filename)
     except Exception:
@@ -658,15 +688,15 @@ def getRMS(data):
     return _rms(data)
 
 
-class SoundFormatNotSupported(StandardError):
+class SoundFormatNotSupported(Exception):
     """Class to report an unsupported sound format"""
 
 
-class SoundFileError(StandardError):
+class SoundFileError(Exception):
     """Class to report sound file failed to load"""
 
 
-class MicrophoneError(StandardError):
+class MicrophoneError(Exception):
     """Class to report a microphone error"""
 
 
@@ -745,13 +775,13 @@ class _GSQueryThread(threading.Thread):
         self.started = True
         self.duration = 0
         try:
-            self.raw = urllib2.urlopen(self.request)
+            self.raw = urllib.request.urlopen(self.request)
         except Exception:  # pragma: no cover
             # yeah, its the internet, stuff happens
             # maybe temporary HTTPError: HTTP Error 502: Bad Gateway
             try:
-                self.raw = urllib2.urlopen(self.request)
-            except StandardError as ex:  # or maybe a dropped connection, etc
+                self.raw = urllib.request.urlopen(self.request)
+            except Exception as ex:  # or maybe a dropped connection, etc
                 logging.error(str(ex))
                 self.running = False  # proceeds as if "timedout"
         self.duration = core.getTime() - self.t0
@@ -900,7 +930,7 @@ class Speech2Text(object):
         # http://thejosephturner.com/blog/2011/03/19/https-certificate-verification-in-python-with-urllib2/
         # set up the https request:
         url = 'https://' + host + '?xjerr=1&' +\
-              'client=psychopy2&' +\
+              'client=psychopy3&' +\
               'lang=' + lang + '&'\
               'pfilter=%d' % pro_filter + '&'\
               'maxresults=%d' % results
@@ -908,13 +938,13 @@ class Speech2Text(object):
                   'User-Agent': useragent}
         web.requireInternetAccess()  # needed to access google's speech API
         try:
-            self.request = urllib2.Request(url, audio, header)
+            self.request = urllib.request.Request(url, audio, header)
         except Exception:  # pragma: no cover
             # try again before accepting defeat
             logging.info("https request failed. %s, %s. trying again..." %
                          (filename, self.filename))
             core.wait(0.2, 0)
-            self.request = urllib2.Request(url, audio, header)
+            self.request = urllib.request.Request(url, audio, header)
 
     def getThread(self):
         """Send a query to Google using a new thread, no blocking or timeout.
@@ -1038,6 +1068,7 @@ def flac2wav(path, keep=True):
     """
     flac_path = _getFlacPath()
     flac_files = []
+    path = pathToString(path)
     if path.endswith('.flac'):
         flac_files = [path]
     elif type(path) == str and os.path.isdir(path):
@@ -1074,6 +1105,7 @@ def wav2flac(path, keep=True, level=5):
     """
     flac_path = _getFlacPath()
     wav_files = []
+    path = pathToString(path)
     if path.endswith('.wav'):
         wav_files = [path]
     elif type(path) == str and os.path.isdir(path):
@@ -1138,16 +1170,16 @@ def switchOn(sampleRate=48000, outputDevice=None, bufferSize=None):
         logging.error(msg)
         raise ImportError(msg)
     if pyo.serverCreated():
-        sound.pyoSndServer.setSamplingRate(sampleRate)
+        sound.backend.pyoSndServer.setSamplingRate(sampleRate)
     else:
         # sound.init() will create pyoSndServer. We want there only
         # ever to be one server
         # will automatically use duplex=1 and stereo if poss
         sound.init(rate=sampleRate)
     if outputDevice:
-        sound.pyoSndServer.setOutputDevice(outputDevice)
+        sound.backend.pyoSndServer.setOutputDevice(outputDevice)
     if bufferSize:
-        sound.pyoSndServer.setBufferSize(bufferSize)
+        sound.backend.pyoSndServer.setBufferSize(bufferSize)
     logging.exp('%s: switch on (%dhz) took %.3fs' %
                 (__file__.strip('.py'), sampleRate, core.getTime() - t0))
 
