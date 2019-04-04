@@ -9,19 +9,19 @@ from psychopy import data, gui, core
 from psychopy.tools.filetools import fromFile
 import pylab
 
-#Open a dialog box to select files from
+# Open a dialog box to select files from
 files = gui.fileOpenDlg('.')
 if not files:
     core.quit()
 
-#get the data from all the files
+# Get the data from all the files
 allIntensities, allResponses = [],[]
 for thisFileName in files:
     thisDat = fromFile(thisFileName)
-    allIntensities.append( thisDat.intensities )
-    allResponses.append( thisDat.data )
+    allIntensities.append(thisDat.intensities )
+    allResponses.append(thisDat.data )
 
-#plot each staircase
+# Plot each staircase
 pylab.subplot(121)
 colors = 'brgkcmbrgkcm'
 lines, names = [],[]
@@ -31,23 +31,24 @@ for fileN, thisStair in enumerate(allIntensities):
     pylab.plot(thisStair, label=files[fileN])
 #pylab.legend()
 
-#get combined data
+# Get combined data
 combinedInten, combinedResp, combinedN = \
              data.functionFromStaircase(allIntensities, allResponses, 5)
-#fit curve - in this case using a Weibull function
+# Fit curve - in this case using a Weibull function
 fit = data.FitWeibull(combinedInten, combinedResp, guess=[0.2, 0.5])
 smoothInt = pylab.arange(min(combinedInten), max(combinedInten), 0.001)
 smoothResp = fit.eval(smoothInt)
 thresh = fit.inverse(0.8)
 print(thresh)
 
-#plot curve
+# Plot curve
 pylab.subplot(122)
 pylab.plot(smoothInt, smoothResp, '-')
-pylab.plot([thresh, thresh],[0,0.8],'--'); pylab.plot([0, thresh],\
-[0.8,0.8],'--')
+pylab.plot([thresh, thresh], [0, 0.8],'--'); pylab.plot([0, thresh],\
+[0.8, 0.8], '--')
 pylab.title('threshold = %0.3f' %(thresh))
-#plot points
+
+# Plot points
 pylab.plot(combinedInten, combinedResp, 'o')
 pylab.ylim([0,1])
 
